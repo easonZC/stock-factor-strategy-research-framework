@@ -1,0 +1,53 @@
+run:
+  factor_scope: cs
+  eval_axis: cross_section
+  standardization: cs_zscore
+
+data:
+  mode: panel
+  adapter: synthetic
+  fields_required: [date, asset, close, volume, mkt_cap, industry]
+  sanitize: true
+  duplicate_policy: last
+  synthetic:
+    n_assets: 60
+    n_days: 420
+    seed: 2026
+    start_date: "2020-01-01"
+
+factor:
+  names: [momentum_20, volatility_20, liquidity_shock, size]
+
+universe_filter:
+  enabled: false
+  min_close: 0.0
+  min_history_days: 1
+  min_median_dollar_volume: 0.0
+  liquidity_lookback: 20
+
+research:
+  horizons: [1, 5, 10, 20]
+  quantiles: 5
+  ic_rolling_window: 20
+  winsorize:
+    enabled: true
+    method: quantile
+    lower_q: 0.01
+    upper_q: 0.99
+    mad_scale: 5.0
+  neutralize:
+    enabled: true
+    mode: both
+
+backtest:
+  enabled: true
+  strategy:
+    mode: longshort
+    long_short_quantile: 0.2
+    rebalance_every: 1
+    weight_scheme: equal
+  commission_bps: 3.0
+  slippage_bps: 2.0
+  leverage: 1.0
+  execution_delay_days: 1
+  execution_price_col: close

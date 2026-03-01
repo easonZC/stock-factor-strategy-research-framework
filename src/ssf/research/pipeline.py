@@ -19,13 +19,19 @@ from ssf.plotting import (
     plot_stability,
     plot_turnover,
 )
-from ssf.preprocess import apply_winsorize, cs_zscore, handle_missing, neutralize_factor
+from ssf.preprocess import apply_winsorize, cs_rank, cs_zscore, handle_missing, neutralize_factor
 from ssf.research.diagnostics import (
     coverage_by_date,
     factor_corr_matrix,
     factor_stability,
     missing_rates,
     outlier_monitor,
+)
+from ssf.research.advanced_metrics import (
+    compute_factor_rank_autocorr,
+    compute_long_short_alpha_beta,
+    summarize_quantile_monotonicity,
+    summarize_quantile_profile,
 )
 from ssf.research.forward_returns import add_forward_returns
 from ssf.research.quantile import quantile_returns
@@ -68,20 +74,33 @@ class FactorResearchPipeline:
         for fac in factors:
             LOGGER.info("Running factor research for: %s", fac)
             fac_raw = panel[fac]
-            fac_wins = apply_winsorize(
-                panel,
-                factor_col=fac,
-                method=self.config.winsorize_method,
-                lower_q=self.config.lower_q,
-                upper_q=self.config.upper_q,
-                mad_scale=self.config.mad_scale,
+            if self.config.winsorize_enabled:
+                fac_base = apply_winsorize(
+                    panel,
+                    factor_col=fac,
+                    method=self.config.winsorize_method,
+                    lower_q=self.config.lower_q,
+                    upper_q=self.config.upper_q,
+                    mad_scale=self.config.mad_scale,
+                )
+            else:
+                fac_base = panel[fac].astype(float)
+
+            if self.config.standardization == "cs_rank":
+                fac_std = cs_rank(pd.DataFrame({"date": panel["date"], fac: fac_base}), fac)
+            elif self.config.standardization == "none":
+                fac_std = fac_base
+            else:
+                fac_std = cs_zscore(pd.DataFrame({"date": panel["date"], fac: fac_base}), fac)
+
+            outlier_rows.append(outlier_monitor(fac_raw, fac_base, fac))
+
+            panel[f"{fac}_raw"] = fac_std
+            panel[f"{fac}_neutralized"] = neutralize_factor(
+                panel.assign(**{fac: fac_std}),
+                fac,
+                self.config.neutralization,
             )
-            fac_z = cs_zscore(pd.DataFrame({"date": panel["date"], fac: fac_wins}), fac)
-
-            outlier_rows.append(outlier_monitor(fac_raw, fac_wins, fac))
-
-            panel[f"{fac}_raw"] = fac_z
-            panel[f"{fac}_neutralized"] = neutralize_factor(panel.assign(**{fac: fac_z}), fac, self.config.neutralization)
 
             fac_table_paths: list[Path] = []
             fac_fig_paths: list[Path] = []
@@ -145,8 +164,37 @@ class FactorResearchPipeline:
                 q_turn.to_csv(q_turn_csv, index=False)
                 fac_table_paths.extend([q_daily_csv, q_nav_csv, q_turn_csv])
 
+                q_profile = summarize_quantile_profile(q_daily, annualization_days=252)
+                q_profile_csv = tables_dir / f"{fac}_{variant}_quantile_profile.csv"
+                q_profile.to_csv(q_profile_csv, index=False)
+                fac_table_paths.append(q_profile_csv)
+
+                mono_stats = summarize_quantile_monotonicity(q_daily)
+                ls_series = q_daily.set_index("date")["long_short"]
+                market_series = tmpq.groupby("date")[primary_ret_col].mean().sort_index()
+                ls_reg = compute_long_short_alpha_beta(ls_series, market_series, annualization_days=252)
+                rank_ac = compute_factor_rank_autocorr(
+                    panel[["date", "asset", col]].rename(columns={col: "factor"}),
+                    factor_col="factor",
+                    lag=1,
+                )
+                rank_ac_mean = float(rank_ac["rank_autocorr_lag1"].mean()) if not rank_ac.empty else float("nan")
+                rank_ac_csv = tables_dir / f"{fac}_{variant}_rank_autocorr_lag1.csv"
+                rank_ac.to_csv(rank_ac_csv, index=False)
+                fac_table_paths.append(rank_ac_csv)
+                ls_diagnostics = {
+                    **mono_stats,
+                    **ls_reg,
+                    "rank_autocorr_lag1_mean": rank_ac_mean,
+                }
+                ls_diag_csv = tables_dir / f"{fac}_{variant}_long_short_diagnostics.csv"
+                pd.DataFrame([ls_diagnostics]).to_csv(ls_diag_csv, index=False)
+                fac_table_paths.append(ls_diag_csv)
+
                 # Newey-West on long-short daily returns
                 nw_t_ls, nw_p_ls = newey_west_tstat(q_daily["long_short"])
+                ls_profile_row = q_profile[q_profile["bucket"] == "long_short"]
+                ls_profile = ls_profile_row.iloc[0].to_dict() if not ls_profile_row.empty else {}
                 summary_rows.append(
                     {
                         "factor": fac,
@@ -164,6 +212,18 @@ class FactorResearchPipeline:
                         "nw_p_rank_ic": np.nan,
                         "nw_t_long_short": nw_t_ls,
                         "nw_p_long_short": nw_p_ls,
+                        "ls_mean_ret": ls_profile.get("mean_ret", np.nan),
+                        "ls_sharpe": ls_profile.get("sharpe", np.nan),
+                        "ls_hit_rate": ls_profile.get("hit_rate", np.nan),
+                        "ls_max_drawdown": ls_profile.get("max_drawdown", np.nan),
+                        "quantile_monotonicity_mean": mono_stats.get("quantile_monotonicity_mean", np.nan),
+                        "quantile_monotonicity_pos_ratio": mono_stats.get(
+                            "quantile_monotonicity_pos_ratio", np.nan
+                        ),
+                        "ls_alpha_ann": ls_reg.get("ls_alpha_ann", np.nan),
+                        "ls_beta": ls_reg.get("ls_beta", np.nan),
+                        "ls_r2": ls_reg.get("ls_r2", np.nan),
+                        "rank_autocorr_lag1_mean": rank_ac_mean,
                     }
                 )
 
@@ -226,6 +286,8 @@ class FactorResearchPipeline:
                 {
                     "horizons": self.config.horizons,
                     "quantiles": self.config.quantiles,
+                    "standardization": self.config.standardization,
+                    "winsorize_enabled": self.config.winsorize_enabled,
                     "winsorize_method": self.config.winsorize_method,
                     "neutralization_mode": self.config.neutralization.mode,
                     "factors": factors,
