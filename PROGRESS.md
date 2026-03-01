@@ -72,7 +72,9 @@ For every complete run, append one new entry at the top of `Run History` with:
   - Hook simulation returns exit code `1` when target ref is `refs/heads/main`.
 - Git actions:
   - Working branch for this run: `chore/branch-pr-workflow-20260301`.
-  - Commit and push are executed on this branch (not on `main`).
+  - Commit succeeded: `4e7afd8` (`docs(workflow): enforce branch and PR push policy`).
+  - Push succeeded: `git push -u origin chore/branch-pr-workflow-20260301`.
+  - PR URL (create): `https://github.com/easonZC/stock-factor-strategy-research-framework/pull/new/chore/branch-pr-workflow-20260301`
 - Next run direction:
   - Keep using one branch per complete run and open a PR for merge.
   - Keep `PROGRESS.md` updated with branch name and push/PR status.
