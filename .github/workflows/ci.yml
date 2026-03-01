@@ -1,0 +1,37 @@
+﻿name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint
+        run: |
+          ruff check src scripts tests
+
+      - name: Unit tests
+        run: |
+          pytest -q
+
+      - name: Demo smoke
+        run: |
+          python scripts/demo_factor_research.py --out outputs/factor_report_ci --assets 10 --days 90
+          test -f outputs/factor_report_ci/index.html
+          test -f outputs/factor_report_ci/tables/summary.csv
