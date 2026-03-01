@@ -11,7 +11,6 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from _workflow_common import parse_csv_list  # noqa: E402
 from ssf.config import UniverseFilterConfig  # noqa: E402
 from ssf.utils import get_logger  # noqa: E402
 from ssf.workflows import ModelFactorBenchmarkConfig, run_model_factor_benchmark  # noqa: E402
@@ -55,9 +54,9 @@ def parse_args() -> argparse.Namespace:
         help="Optional dir containing <model>.json parameter grids (list[dict])",
     )
 
-    parser.add_argument("--horizons", nargs="+", type=int, default=[1, 5, 10, 20])
-    parser.add_argument("--neutralize", choices=["none", "size", "industry", "both"], default="both")
-    parser.add_argument("--winsorize", choices=["quantile", "mad"], default="quantile")
+    parser.add_argument("--horizons", nargs="+", default=[1, 5, 10, 20])
+    parser.add_argument("--neutralize", default="both")
+    parser.add_argument("--winsorize", default="quantile")
     parser.add_argument("--quantiles", type=int, default=5)
     parser.add_argument("--ic-rolling-window", type=int, default=20)
     parser.add_argument("--preferred-metric-variant", default="neutralized")
@@ -67,7 +66,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup-days", type=int, default=0)
     parser.add_argument("--max-assets", type=int, default=None)
     parser.add_argument("--no-sanitize", action="store_true")
-    parser.add_argument("--duplicate-policy", choices=["last", "first", "raise"], default="last")
+    parser.add_argument("--duplicate-policy", default="last")
 
     parser.add_argument("--apply-universe-filter", action="store_true")
     parser.add_argument("--min-close", type=float, default=0.0)
@@ -81,38 +80,38 @@ def main() -> None:
     args = parse_args()
 
     workflow_cfg = ModelFactorBenchmarkConfig(
-        models=parse_csv_list(args.models),
+        models=args.models,
         factor_prefix=args.factor_prefix,
-        feature_cols=parse_csv_list(args.feature_cols),
-        extra_report_factors=parse_csv_list(args.extra_report_factors),
-        label_horizon=int(args.label_horizon),
-        train_days=int(args.train_days),
-        valid_days=int(args.valid_days),
-        step_days=int(args.step_days),
+        feature_cols=args.feature_cols,
+        extra_report_factors=args.extra_report_factors,
+        label_horizon=args.label_horizon,
+        train_days=args.train_days,
+        valid_days=args.valid_days,
+        step_days=args.step_days,
         embargo_days=args.embargo_days,
-        min_train_rows=int(args.min_train_rows),
-        min_valid_rows=int(args.min_valid_rows),
+        min_train_rows=args.min_train_rows,
+        min_valid_rows=args.min_valid_rows,
         model_param_grid_dir=args.model_param_grid_dir,
-        horizons=[int(x) for x in args.horizons],
+        horizons=args.horizons,
         neutralize=args.neutralize,
         winsorize=args.winsorize,
-        quantiles=int(args.quantiles),
-        ic_rolling_window=int(args.ic_rolling_window),
+        quantiles=args.quantiles,
+        ic_rolling_window=args.ic_rolling_window,
         preferred_metric_variant=args.preferred_metric_variant,
         start_date=args.start_date,
         end_date=args.end_date,
-        warmup_days=int(args.warmup_days),
+        warmup_days=args.warmup_days,
         max_assets=args.max_assets,
         sanitize=not args.no_sanitize,
         duplicate_policy=args.duplicate_policy,
-        apply_universe_filter=bool(args.apply_universe_filter),
+        apply_universe_filter=args.apply_universe_filter,
         universe_filter=UniverseFilterConfig(
-            min_close=float(args.min_close),
-            min_history_days=int(args.min_history_days),
-            min_median_dollar_volume=float(args.min_median_dollar_volume),
-            liquidity_lookback=int(args.liquidity_lookback),
+            min_close=args.min_close,
+            min_history_days=args.min_history_days,
+            min_median_dollar_volume=args.min_median_dollar_volume,
+            liquidity_lookback=args.liquidity_lookback,
         ),
-        save_model_artifacts=bool(args.save_model_artifacts),
+        save_model_artifacts=args.save_model_artifacts,
         model_artifact_dir=args.model_artifact_dir,
     )
 

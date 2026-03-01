@@ -25,17 +25,34 @@ DuplicatePolicy = Literal["last", "first", "raise"]
 NeutralizeMode = Literal["none", "size", "industry", "both"]
 WinsorizeMode = Literal["quantile", "mad"]
 
+DEFAULT_MODELS = ["lgbm", "mlp"]
+DEFAULT_FEATURE_COLS = ["momentum_20", "volatility_20", "liquidity_shock", "size"]
+DEFAULT_HORIZONS = [1, 5, 10, 20]
+MODEL_ALIASES = {
+    "ridge": "ridge",
+    "linear": "ridge",
+    "linear_regression": "ridge",
+    "rf": "rf",
+    "random_forest": "rf",
+    "randomforest": "rf",
+    "mlp": "mlp",
+    "nn": "mlp",
+    "neural_net": "mlp",
+    "neural_network": "mlp",
+    "lgbm": "lgbm",
+    "lightgbm": "lgbm",
+}
+
 
 @dataclass(slots=True)
 class ModelFactorBenchmarkConfig:
     """Config for model-factor OOF benchmark workflow."""
 
-    models: list[str] = field(default_factory=lambda: ["lgbm", "mlp"])
+    # Accept list or comma-separated string for friendlier API usage.
+    models: list[str] | str | None = field(default_factory=lambda: list(DEFAULT_MODELS))
     factor_prefix: str = "model_factor_oof"
-    feature_cols: list[str] = field(
-        default_factory=lambda: ["momentum_20", "volatility_20", "liquidity_shock", "size"]
-    )
-    extra_report_factors: list[str] = field(default_factory=list)
+    feature_cols: list[str] | str | None = field(default_factory=lambda: list(DEFAULT_FEATURE_COLS))
+    extra_report_factors: list[str] | str | None = field(default_factory=list)
     label_horizon: int = 5
 
     train_days: int = 252
@@ -46,12 +63,12 @@ class ModelFactorBenchmarkConfig:
     min_valid_rows: int = 100
     model_param_grid_dir: str | None = None
 
-    horizons: list[int] = field(default_factory=lambda: [1, 5, 10, 20])
+    horizons: list[int] | str | None = field(default_factory=lambda: list(DEFAULT_HORIZONS))
     neutralize: NeutralizeMode = "both"
     winsorize: WinsorizeMode = "quantile"
     quantiles: int = 5
     ic_rolling_window: int = 20
-    preferred_metric_variant: str = "neutralized"
+    preferred_metric_variant: str = "auto"
 
     start_date: str | None = None
     end_date: str | None = None
@@ -119,6 +136,75 @@ def _parse_model_param_grid(grid_dir: str | None, model_name: str) -> list[dict[
     return payload  # type: ignore[return-value]
 
 
+def _coerce_name_list(raw: list[str] | str | None, default: list[str]) -> list[str]:
+    if raw is None:
+        return list(default)
+    if isinstance(raw, str):
+        parts = [x.strip() for x in raw.split(",")]
+        cleaned = [x for x in parts if x]
+        return cleaned if cleaned else list(default)
+    cleaned = [str(x).strip() for x in raw if str(x).strip()]
+    return cleaned if cleaned else list(default)
+
+
+def _coerce_int_list(raw: list[int] | str | None, default: list[int], min_value: int = 1) -> list[int]:
+    if raw is None:
+        return list(default)
+    vals: list[int] = []
+    if isinstance(raw, str):
+        tokens = [x.strip() for x in raw.split(",") if x.strip()]
+        for t in tokens:
+            try:
+                v = int(t)
+            except ValueError:
+                continue
+            if v >= min_value:
+                vals.append(v)
+    else:
+        for item in raw:
+            try:
+                v = int(item)
+            except (TypeError, ValueError):
+                continue
+            if v >= min_value:
+                vals.append(v)
+    if not vals:
+        return list(default)
+    return sorted(set(vals))
+
+
+def _coerce_choice(raw: str, allowed: set[str], default: str, field_name: str) -> str:
+    key = str(raw).strip().lower()
+    if key in allowed:
+        return key
+    LOGGER.warning(
+        "Invalid %s='%s'. Falling back to default '%s'.",
+        field_name,
+        raw,
+        default,
+    )
+    return default
+
+
+def _resolve_models(raw_models: list[str] | str | None) -> list[str]:
+    parsed = _coerce_name_list(raw_models, default=DEFAULT_MODELS)
+    resolved: list[str] = []
+    for original in parsed:
+        alias = MODEL_ALIASES.get(str(original).strip().lower(), str(original).strip().lower())
+        if alias not in ModelRegistry._defaults:
+            LOGGER.warning(
+                "Skip unsupported model '%s'. Available models: %s",
+                original,
+                sorted(ModelRegistry._defaults),
+            )
+            continue
+        if alias not in resolved:
+            resolved.append(alias)
+    if not resolved:
+        raise ValueError("No valid models after normalization. Please provide at least one supported model.")
+    return resolved
+
+
 def _apply_basic_panel_filters(
     panel: pd.DataFrame,
     start_date: str | None,
@@ -154,76 +240,66 @@ def _safe_float(value: object) -> float:
     return float(value)
 
 
+def _empty_primary_metrics(variant: str) -> dict[str, float | int | str]:
+    return {
+        "research_variant": variant,
+        "research_horizon": -1,
+        "research_rank_ic_mean": float("nan"),
+        "research_rank_icir": float("nan"),
+        "research_nw_t_rank_ic": float("nan"),
+        "research_nw_p_rank_ic": float("nan"),
+        "research_ls_mean_ret": float("nan"),
+        "research_ls_sharpe": float("nan"),
+        "research_ls_alpha_ann": float("nan"),
+        "research_rank_autocorr_lag1_mean": float("nan"),
+    }
+
+
 def _extract_primary_metrics(
     summary: pd.DataFrame,
     factor_name: str,
     preferred_horizon: int,
-    variant: str = "neutralized",
+    variant: str = "auto",
 ) -> dict[str, float | int | str]:
-    subset = summary[(summary["factor"] == factor_name) & (summary["variant"] == variant)].copy()
-    if subset.empty and variant != "raw":
-        return _extract_primary_metrics(
-            summary=summary,
-            factor_name=factor_name,
-            preferred_horizon=preferred_horizon,
-            variant="raw",
-        )
-    if subset.empty:
-        return {
-            "research_variant": variant,
-            "research_horizon": -1,
-            "research_rank_ic_mean": float("nan"),
-            "research_rank_icir": float("nan"),
-            "research_nw_t_rank_ic": float("nan"),
-            "research_nw_p_rank_ic": float("nan"),
-            "research_ls_mean_ret": float("nan"),
-            "research_ls_sharpe": float("nan"),
-            "research_ls_alpha_ann": float("nan"),
-            "research_rank_autocorr_lag1_mean": float("nan"),
-        }
-
-    ic_rows = subset[subset["rank_ic_mean"].notna()].copy()
-    if ic_rows.empty and variant != "raw":
-        return _extract_primary_metrics(
-            summary=summary,
-            factor_name=factor_name,
-            preferred_horizon=preferred_horizon,
-            variant="raw",
-        )
-    if ic_rows.empty:
-        return {
-            "research_variant": variant,
-            "research_horizon": -1,
-            "research_rank_ic_mean": float("nan"),
-            "research_rank_icir": float("nan"),
-            "research_nw_t_rank_ic": float("nan"),
-            "research_nw_p_rank_ic": float("nan"),
-            "research_ls_mean_ret": float("nan"),
-            "research_ls_sharpe": float("nan"),
-            "research_ls_alpha_ann": float("nan"),
-            "research_rank_autocorr_lag1_mean": float("nan"),
-        }
-
-    if int(preferred_horizon) in set(ic_rows["horizon"].astype(int)):
-        ic_row = ic_rows[ic_rows["horizon"].astype(int) == int(preferred_horizon)].iloc[0]
+    preferred = str(variant).strip().lower()
+    if preferred in {"raw"}:
+        variant_order = ["raw", "neutralized"]
+    elif preferred in {"neutralized", "neutral"}:
+        variant_order = ["neutralized", "raw"]
     else:
-        ic_row = ic_rows.sort_values("horizon").iloc[0]
+        variant_order = ["neutralized", "raw"]
 
-    chosen_h = int(ic_row["horizon"])
-    ls_rows = subset[(subset["horizon"].astype(int) == chosen_h) & (subset["ls_sharpe"].notna())]
-    ls_row = ls_rows.iloc[0] if not ls_rows.empty else pd.Series(dtype=float)
-    return {
-        "research_variant": variant,
-        "research_horizon": chosen_h,
-        "research_rank_ic_mean": _safe_float(ic_row.get("rank_ic_mean", np.nan)),
-        "research_rank_icir": _safe_float(ic_row.get("rank_icir", np.nan)),
-        "research_nw_t_rank_ic": _safe_float(ic_row.get("nw_t_rank_ic", np.nan)),
-        "research_nw_p_rank_ic": _safe_float(ic_row.get("nw_p_rank_ic", np.nan)),
-        "research_ls_mean_ret": _safe_float(ls_row.get("ls_mean_ret", np.nan)),
-        "research_ls_sharpe": _safe_float(ls_row.get("ls_sharpe", np.nan)),
-        "research_ls_alpha_ann": _safe_float(ls_row.get("ls_alpha_ann", np.nan)),
-        "research_rank_autocorr_lag1_mean": _safe_float(ls_row.get("rank_autocorr_lag1_mean", np.nan)),
-    }
+    for v in variant_order:
+        subset = summary[(summary["factor"] == factor_name) & (summary["variant"] == v)].copy()
+        if subset.empty:
+            continue
+        ic_rows = subset[subset["rank_ic_mean"].notna()].copy()
+        if ic_rows.empty:
+            continue
+        if int(preferred_horizon) in set(ic_rows["horizon"].astype(int)):
+            ic_row = ic_rows[ic_rows["horizon"].astype(int) == int(preferred_horizon)].iloc[0]
+        else:
+            ic_row = ic_rows.sort_values("horizon").iloc[0]
+
+        chosen_h = int(ic_row["horizon"])
+        ls_rows = subset[(subset["horizon"].astype(int) == chosen_h) & (subset["ls_sharpe"].notna())]
+        ls_row = ls_rows.iloc[0] if not ls_rows.empty else pd.Series(dtype=float)
+        return {
+            "research_variant": v,
+            "research_horizon": chosen_h,
+            "research_rank_ic_mean": _safe_float(ic_row.get("rank_ic_mean", np.nan)),
+            "research_rank_icir": _safe_float(ic_row.get("rank_icir", np.nan)),
+            "research_nw_t_rank_ic": _safe_float(ic_row.get("nw_t_rank_ic", np.nan)),
+            "research_nw_p_rank_ic": _safe_float(ic_row.get("nw_p_rank_ic", np.nan)),
+            "research_ls_mean_ret": _safe_float(ls_row.get("ls_mean_ret", np.nan)),
+            "research_ls_sharpe": _safe_float(ls_row.get("ls_sharpe", np.nan)),
+            "research_ls_alpha_ann": _safe_float(ls_row.get("ls_alpha_ann", np.nan)),
+            "research_rank_autocorr_lag1_mean": _safe_float(
+                ls_row.get("rank_autocorr_lag1_mean", np.nan)
+            ),
+        }
+
+    return _empty_primary_metrics(variant=str(variant))
 
 
 def run_model_factor_benchmark(
@@ -236,19 +312,33 @@ def run_model_factor_benchmark(
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    models = list(config.models)
-    if not models:
-        raise ValueError("Model list is empty.")
-    unknown_models = [m for m in models if m not in ModelRegistry._defaults]
-    if unknown_models:
-        raise ValueError(f"Unknown model(s): {unknown_models}. Available: {list(ModelRegistry._defaults)}")
-    if not config.feature_cols:
-        raise ValueError("feature_cols cannot be empty.")
+    models = _resolve_models(config.models)
+    feature_cols = _coerce_name_list(config.feature_cols, default=DEFAULT_FEATURE_COLS)
+    extra_report_factors = _coerce_name_list(config.extra_report_factors, default=[])
+    horizons = _coerce_int_list(config.horizons, default=DEFAULT_HORIZONS, min_value=1)
+    neutralize_mode = _coerce_choice(
+        raw=str(config.neutralize),
+        allowed={"none", "size", "industry", "both"},
+        default="both",
+        field_name="neutralize",
+    )
+    winsorize_mode = _coerce_choice(
+        raw=str(config.winsorize),
+        allowed={"quantile", "mad"},
+        default="quantile",
+        field_name="winsorize",
+    )
+    duplicate_policy = _coerce_choice(
+        raw=str(config.duplicate_policy),
+        allowed={"last", "first", "raise"},
+        default="last",
+        field_name="duplicate_policy",
+    )
 
     read_result = read_panel(
         panel_path,
         sanitize=config.sanitize,
-        sanitization_config=PanelSanitizationConfig(duplicate_policy=config.duplicate_policy),
+        sanitization_config=PanelSanitizationConfig(duplicate_policy=duplicate_policy),
         return_report=config.sanitize,
     )
     if config.sanitize:
@@ -265,7 +355,7 @@ def run_model_factor_benchmark(
         max_assets=config.max_assets,
     )
 
-    required_factor_cols = sorted(set(config.feature_cols + config.extra_report_factors))
+    required_factor_cols = sorted(set(feature_cols + extra_report_factors))
     registry = default_factor_registry()
     missing = [f for f in required_factor_cols if f not in panel.columns]
     computable = [f for f in missing if f in registry]
@@ -303,7 +393,7 @@ def run_model_factor_benchmark(
         param_grid = _parse_model_param_grid(config.model_param_grid_dir, model_name=model_name)
         oof_res = train_oof_model_factor(
             panel=panel,
-            feature_cols=config.feature_cols,
+            feature_cols=feature_cols,
             model_name=model_name,
             label_horizon=int(config.label_horizon),
             split_config=oof_cfg,
@@ -339,7 +429,7 @@ def run_model_factor_benchmark(
                 path=artifact_path,
                 model_name=model_name,
                 metadata={
-                    "feature_cols": config.feature_cols,
+                    "feature_cols": feature_cols,
                     "label_horizon": int(config.label_horizon),
                     "best_params": oof_res.best_params,
                     "best_oof_rank_ic": oof_res.best_score,
@@ -364,13 +454,13 @@ def run_model_factor_benchmark(
             }
         )
 
-    report_factors = [*factor_cols, *config.extra_report_factors]
+    report_factors = [*factor_cols, *extra_report_factors]
     research_cfg = ResearchConfig(
-        horizons=config.horizons,
+        horizons=horizons,
         quantiles=int(config.quantiles),
         ic_rolling_window=int(config.ic_rolling_window),
-        winsorize_method=config.winsorize,
-        neutralization=NeutralizationConfig(mode=config.neutralize),
+        winsorize_method=winsorize_mode,
+        neutralization=NeutralizationConfig(mode=neutralize_mode),
     )
     report_outputs = FactorResearchPipeline(research_cfg).run(
         panel=panel,
@@ -401,8 +491,9 @@ def run_model_factor_benchmark(
     run_meta = {
         "panel_path": str(panel_path),
         "config": config,
-        "models": models,
-        "feature_cols": config.feature_cols,
+        "resolved_models": models,
+        "resolved_feature_cols": feature_cols,
+        "resolved_horizons": horizons,
         "report_factors": report_factors,
         "sanitize_enabled": bool(config.sanitize),
         "sanitization_report": sanitization_report,
