@@ -53,6 +53,27 @@ For every complete run, append one new entry at the top of `Run History` with:
 
 ## Run History
 
+### Run 2026-03-01-003
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal: Verify `gh` availability/auth and confirm ability to create PR directly from CLI.
+- Changes:
+  - Updated `PROGRESS.md` with this run result.
+- Validation commands:
+  - `gh --version`
+  - `gh auth status`
+  - `gh pr status --repo easonZC/stock-factor-strategy-research-framework`
+  - `gh pr list --repo easonZC/stock-factor-strategy-research-framework --head chore/branch-pr-workflow-20260301 --state all --limit 5`
+  - `gh pr create --repo easonZC/stock-factor-strategy-research-framework --base main --head chore/branch-pr-workflow-20260301 ...`
+- Validation summary:
+  - `gh` is installed and authenticated as `easonZC`.
+  - Token has `repo` scope and git protocol is `ssh`.
+  - PR creation via `gh` succeeded.
+- Git actions:
+  - Working branch: `chore/branch-pr-workflow-20260301`.
+  - PR created: `https://github.com/easonZC/stock-factor-strategy-research-framework/pull/1`
+- Next run direction:
+  - Keep creating branch-scoped commits and update this PR (or create new branch + new PR for a new objective).
+
 ### Run 2026-03-01-002
 - Time: 2026-03-01 (America/Los_Angeles)
 - Goal: Verify SSH push access and enforce branch + PR workflow (no direct push to `main`).
