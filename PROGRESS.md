@@ -14,6 +14,11 @@ For every complete run, append one new entry at the top of `Run History` with:
 - Next run direction.
 
 ## Strict Git Workflow
+0. Scope Boundary
+- Default operation scope is this repository path only:
+  - `/home/oknotok/Projects/stock-factor-strategy-research-framework`
+- Do not read/write Windows mounted paths (`/mnt/c`, `/mnt/d`, etc.) unless the user explicitly asks.
+
 1. Sync
 - `git fetch origin`
 - `git pull --rebase origin main` (if working on `main`)
