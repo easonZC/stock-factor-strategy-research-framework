@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Block direct pushes to main. Require branch + PR workflow.
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [[ "${remote_ref:-}" == "refs/heads/main" ]]; then
+    echo "ERROR: Direct pushes to 'main' are blocked in this repo." >&2
+    echo "Create a feature branch and open a PR to merge into main." >&2
+    exit 1
+  fi
+done
+
+exit 0

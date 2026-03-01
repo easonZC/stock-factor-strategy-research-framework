@@ -19,28 +19,63 @@ For every complete run, append one new entry at the top of `Run History` with:
   - `/home/oknotok/Projects/stock-factor-strategy-research-framework`
 - Do not read/write Windows mounted paths (`/mnt/c`, `/mnt/d`, etc.) unless the user explicitly asks.
 
-1. Sync
+1. Sync Main
+- `git switch main`
 - `git fetch origin`
-- `git pull --rebase origin main` (if working on `main`)
+- `git pull --rebase origin main`
 
-2. Implement
+2. Create Branch
+- `git switch -c <type>/<scope>-<yyyymmdd>`
+- Never develop directly on `main`.
+
+3. Implement
 - Keep changes focused to one clear objective per run.
 - Update `PROGRESS.md` in the same run.
 
-3. Validate
+4. Validate
 - Run targeted checks/tests for changed scope.
 - Ensure `git status -sb` only contains intended changes.
 
-4. Commit
+5. Commit
 - `git add <files>`
 - `git commit -m "<type>(<scope>): <summary>"`
 - Commit message types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
 
-5. Push
-- `git push origin <branch>`
+6. Push Branch
+- `git push -u origin <branch>`
+- Never push `main` directly.
 - Record commit hash and push result in `PROGRESS.md`.
 
+7. Open PR
+- Open pull request: `<branch> -> main`.
+- Merge to `main` through PR only.
+- Local guardrail: `.githooks/pre-push` blocks direct pushes to `main`.
+
 ## Run History
+
+### Run 2026-03-01-002
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal: Verify SSH push access and enforce branch + PR workflow (no direct push to `main`).
+- Changes:
+  - Added `.githooks/pre-push` to block direct pushes to `main`.
+  - Updated strict git workflow to "new branch -> push branch -> open PR -> merge to main".
+- Validation commands:
+  - `git status -sb`
+  - `git remote -v`
+  - `ssh -T -o StrictHostKeyChecking=accept-new git@github.com`
+  - `git config --get core.hooksPath`
+  - `printf '... refs/heads/main ...' | .githooks/pre-push origin <remote>`
+- Validation summary:
+  - `origin` uses SSH URL (`git@github.com:...`).
+  - SSH authentication to GitHub succeeded.
+  - `core.hooksPath` is set to `.githooks`.
+  - Hook simulation returns exit code `1` when target ref is `refs/heads/main`.
+- Git actions:
+  - Working branch for this run: `chore/branch-pr-workflow-20260301`.
+  - Commit and push are executed on this branch (not on `main`).
+- Next run direction:
+  - Keep using one branch per complete run and open a PR for merge.
+  - Keep `PROGRESS.md` updated with branch name and push/PR status.
 
 ### Run 2026-03-01-001
 - Time: 2026-03-01 (America/Los_Angeles)
