@@ -54,7 +54,9 @@ For every complete run, append one new entry at the top of `Run History` with:
   - Remote `origin` is configured and reachable for read (`ls-remote` succeeded).
   - WSL can see mounted Windows drives under `/mnt` (for example `/mnt/c`, `/mnt/d`).
 - Git actions:
-  - Pending in this run: commit + push this file.
+  - Local commit succeeded: `cc2e07b` (`docs(progress): add run log policy and initial entry`).
+  - Push failed: `git push origin main` -> missing GitHub HTTPS credentials in this WSL session.
 - Next run direction:
   - Continue appending one run entry per completed task.
   - Keep one objective per commit and include verification commands/results.
+  - Configure authenticated push (SSH key or GitHub token) before requiring remote push on every run.
