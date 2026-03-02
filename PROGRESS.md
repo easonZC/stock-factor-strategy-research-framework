@@ -53,6 +53,65 @@ For every complete run, append one new entry at the top of `Run History` with:
 
 ## Run History
 
+### Run 2026-03-01-013
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal: Push phase 5 and 6 forward with engineering quality upgrades and external/public data integration.
+- Changes:
+  - Engineering (phase 5):
+    - Upgraded logging utility with explicit runtime configurability:
+      - `core/factorlab/utils/logging_utils.py`
+      - new `configure_logging(level, log_file, force)` + `FACTORLAB_LOG_LEVEL` support
+    - Exported logging config helper:
+      - `core/factorlab/utils/__init__.py`
+    - Added CLI logging controls (`--log-level`, `--log-file`) to key entrypoints:
+      - `apps/run_from_config.py`
+      - `apps/run_model_factor_benchmark.py`
+      - `apps/prepare_data.py`
+    - Added logging unit test:
+      - `tests/test_logging_utils.py`
+  - External integration (phase 6):
+    - Added public Stooq data adapter (best-effort with explicit warnings, no silent failure):
+      - `core/factorlab/data/adapters.py` (`prepare_stooq_panel`)
+      - retains canonical panel schema output
+    - Extended adapter config model for public-data pulls:
+      - `core/factorlab/config.py` (`symbols`, `start_date`, `end_date`, `request_timeout_sec`)
+    - Exported Stooq adapter:
+      - `core/factorlab/data/__init__.py`
+    - Extended `prepare_data` CLI:
+      - `apps/prepare_data.py` now supports `--adapter stooq --symbols ...`
+    - Integrated Stooq into config-driven one-click workflow:
+      - `core/factorlab/workflows/config_runner.py`
+      - supports `data.adapter=stooq` in normalize/load/schema-validate pipeline
+    - Added stooq-ready config template:
+      - `apps/generate_run_config.py` now supports `--adapter stooq`
+    - Added sample config:
+      - `configs/cs_stooq_demo.yaml`
+    - Added/updated docs:
+      - `README.md` includes Stooq usage and logging options
+  - Test coverage upgrades:
+    - `tests/test_stooq_adapter.py`
+    - `tests/test_run_from_config.py` (stooq adapter smoke via monkeypatch)
+    - `tests/test_config_schema_validation.py` (stooq symbols requirement)
+    - `tests/test_generate_run_config_script.py` (stooq template generation)
+- Validation commands:
+  - `python3 -m ruff check core apps tests`
+  - `python3 -m pytest -q`
+- Validation summary:
+  - Lint passed.
+  - Tests passed: `43 passed`.
+- Git actions:
+  - New working branch: `feat/ops-logging-and-stooq-20260301`
+  - Commit: `06083d3` (`feat(ops): add stooq adapter and configurable logging`)
+  - Push succeeded: `git push -u origin feat/ops-logging-and-stooq-20260301`
+  - PR created: `https://github.com/easonZC/stock-factor-strategy-research-framework/pull/7`
+- Next run direction:
+  - Continue phase 5:
+    - reduce noisy runtime warnings (constant-correlation edge cases) with explicit warning policies.
+    - add optional per-run warning summary tables to `run_meta.json`.
+  - Continue phase 6:
+    - add another public adapter path (e.g., yfinance optional) via plugin-style data adapter interface.
+    - add interactive report option toggle (plotly/altair) while preserving static CI-safe output.
+
 ### Run 2026-03-01-012
 - Time: 2026-03-01 (America/Los_Angeles)
 - Goal:
