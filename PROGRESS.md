@@ -123,9 +123,9 @@ For every complete run, append one new entry at the top of `Run History` with:
   - Full test suite passed: `55 passed`.
 - Git actions:
   - New branch: `feat/adapter-validate-audit-20260301`
-  - Commit: pending
-  - Push: pending
-  - PR: pending
+  - Commit: `bfbd11c` (`feat(data): add adapter config validators and quality audit tables`)
+  - Push succeeded: `git push -u origin feat/adapter-validate-audit-20260301`
+  - PR created: `https://github.com/easonZC/stock-factor-strategy-research-framework/pull/10`
 - Next run direction:
   - 将 adapter 审计指标在 HTML 中增加可视化图（覆盖率时间序列/字段缺失热力）。
   - 为 adapter validator 增加可选“告警级返回”规范（结构化 warning code）。
