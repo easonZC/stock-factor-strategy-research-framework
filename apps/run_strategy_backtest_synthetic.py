@@ -1,4 +1,7 @@
-"""模块说明。"""
+"""合成数据策略回测入口。
+
+基于 synthetic 面板生成信号并执行策略回测，输出日频结果与绩效指标。
+"""
 
 from __future__ import annotations
 
@@ -22,7 +25,7 @@ from factorlab.strategies import LongShortQuantileStrategy, TopKLongStrategy
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Run synthetic strategy backtest demo.",
+        description="Run synthetic strategy backtest.",
         epilog=(
             "Examples:\n"
             "  python apps/run_strategy_backtest_synthetic.py --out outputs/research/strategy/synthetic_backtest\n"

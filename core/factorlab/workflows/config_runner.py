@@ -1,4 +1,11 @@
-"""模块说明。"""
+"""配置驱动工作流主入口。
+
+职责：
+1. 解析并合并多份配置（支持 imports 递归分层与 CLI 覆盖）
+2. 统一配置归一化（含别名兼容、研究档位 profile、治理策略）
+3. 执行数据加载、因子计算、研究报告与可选回测
+4. 输出可审计元数据（run_meta / run_manifest / 质量审计表）
+"""
 
 from __future__ import annotations
 
@@ -70,6 +77,87 @@ FACTOR_REQUIRED_COLUMNS: dict[str, set[str]] = {
     "volatility_20": {"close"},
     "liquidity_shock": {"volume"},
     "size": {"mkt_cap"},
+}
+
+# 配置别名兼容映射（alias -> canonical）
+CONFIG_ALIAS_PATHS: dict[tuple[str, ...], tuple[str, ...]] = {
+    ("run", "scope"): ("run", "factor_scope"),
+    ("run", "axis"): ("run", "eval_axis"),
+    ("run", "std"): ("run", "standardization"),
+    ("run", "standardize"): ("run", "standardization"),
+    ("run", "profile"): ("run", "research_profile"),
+    ("run", "stage_stop"): ("run", "stop_after"),
+    ("data", "required_cols"): ("data", "fields_required"),
+    ("data", "min_rows"): ("data", "min_rows_per_asset"),
+    ("factor", "list"): ("factor", "names"),
+    ("factor", "missing"): ("factor", "on_missing"),
+    ("research", "ic_window"): ("research", "ic_rolling_window"),
+    ("research", "q"): ("research", "quantiles"),
+    ("research", "steps"): ("research", "preprocess_steps"),
+    ("research", "missing"): ("research", "missing_policy"),
+    ("backtest", "strategy", "type"): ("backtest", "strategy", "mode"),
+}
+
+# 研究档位默认值（用于快速切换研究粒度与运行成本）
+RESEARCH_PROFILE_DEFAULTS: dict[str, dict[str, dict[str, Any]]] = {
+    "cs": {
+        "fast": {
+            "horizons": [1, 5],
+            "quantiles": 3,
+            "ic_rolling_window": 10,
+            "annualization_days": 252,
+            "missing_policy": "drop",
+            "preprocess_steps": ["standardize"],
+        },
+        "dev": {
+            "horizons": [1, 5, 10],
+            "quantiles": 5,
+            "ic_rolling_window": 15,
+            "annualization_days": 252,
+            "missing_policy": "drop",
+            "preprocess_steps": ["winsorize", "standardize"],
+        },
+        "full": {
+            "horizons": [1, 5, 10, 20],
+            "quantiles": 5,
+            "ic_rolling_window": 20,
+            "annualization_days": 252,
+            "missing_policy": "drop",
+            "preprocess_steps": ["winsorize", "standardize", "neutralize"],
+        },
+    },
+    "ts": {
+        "fast": {
+            "horizons": [1, 5],
+            "quantiles": 3,
+            "ic_rolling_window": 15,
+            "annualization_days": 252,
+            "missing_policy": "drop",
+            "ts_standardize_window": 40,
+            "ts_quantile_lookback": 60,
+            "ts_signal_lags": [0, 1, 2],
+        },
+        "dev": {
+            "horizons": [1, 5, 10],
+            "quantiles": 5,
+            "ic_rolling_window": 20,
+            "annualization_days": 252,
+            "missing_policy": "drop",
+            "ts_standardize_window": 60,
+            "ts_quantile_lookback": 80,
+            "ts_signal_lags": [0, 1, 2, 5],
+        },
+        "full": {
+            "horizons": [1, 5, 10, 20],
+            "quantiles": 5,
+            "ic_rolling_window": 30,
+            "annualization_days": 252,
+            "missing_policy": "drop",
+            "ts_standardize_window": 60,
+            "ts_quantile_lookback": 80,
+            "ts_signal_lags": [0, 1, 2, 5, 10],
+        },
+    },
 }
 
 
@@ -284,6 +372,78 @@ def _is_key_present(obj: dict[str, Any], path: tuple[str, ...]) -> bool:
     return True
 
 
+def _set_nested_value(obj: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
+    cur: dict[str, Any] = obj
+    for key in path[:-1]:
+        nxt = cur.get(key)
+        if not isinstance(nxt, dict):
+            nxt = {}
+            cur[key] = nxt
+        cur = nxt
+    cur[path[-1]] = value
+
+
+def _pop_nested_value(obj: dict[str, Any], path: tuple[str, ...]) -> tuple[Any, bool]:
+    parents: list[tuple[dict[str, Any], str]] = []
+    cur: dict[str, Any] | None = obj
+    for key in path[:-1]:
+        if not isinstance(cur, dict) or key not in cur or not isinstance(cur[key], dict):
+            return None, False
+        parents.append((cur, key))
+        cur = cur[key]
+    if not isinstance(cur, dict):
+        return None, False
+    leaf = path[-1]
+    if leaf not in cur:
+        return None, False
+    value = cur.pop(leaf)
+    # 清理因删除而产生的空字典，避免留下无意义节点。
+    for parent, key in reversed(parents):
+        node = parent.get(key)
+        if isinstance(node, dict) and not node:
+            parent.pop(key, None)
+        else:
+            break
+    return value, True
+
+
+def normalize_run_config_aliases(cfg: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """将配置中的别名键迁移为标准键，并返回迁移记录。"""
+    out = deepcopy(cfg)
+    alias_events: list[dict[str, Any]] = []
+    for alias_path, canonical_path in CONFIG_ALIAS_PATHS.items():
+        value, exists = _pop_nested_value(out, alias_path)
+        if not exists:
+            continue
+        alias_name = ".".join(alias_path)
+        canonical_name = ".".join(canonical_path)
+        if _is_key_present(out, canonical_path):
+            prev_value = _get_nested_value(out, canonical_path)
+            _set_nested_value(out, canonical_path, value)
+            alias_events.append(
+                {
+                    "alias": alias_name,
+                    "canonical": canonical_name,
+                    "applied": True,
+                    "reason": "canonical_overridden_by_alias",
+                    "alias_value": value,
+                    "canonical_prev_value": prev_value,
+                }
+            )
+            continue
+        _set_nested_value(out, canonical_path, value)
+        alias_events.append(
+            {
+                "alias": alias_name,
+                "canonical": canonical_name,
+                "applied": True,
+                "reason": "migrated",
+                "alias_value": value,
+            }
+        )
+    return out, alias_events
+
+
 def _normalize_run_governance_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     run_cfg = _as_dict(cfg.get("run"))
     config_mode = str(run_cfg.get("config_mode", "compat")).strip().lower()
@@ -296,12 +456,16 @@ def _normalize_run_governance_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     stop_after = str(run_cfg.get("stop_after", "backtest")).strip().lower()
     if stop_after not in {"factor", "research", "backtest"}:
         raise ValueError("run.stop_after must be one of ['factor', 'research', 'backtest'].")
+    research_profile = str(run_cfg.get("research_profile", "full")).strip().lower()
+    if research_profile not in {"fast", "dev", "full"}:
+        raise ValueError("run.research_profile must be one of ['fast', 'dev', 'full'].")
 
     fail_on_autocorrect = _to_bool(run_cfg.get("fail_on_autocorrect"), False)
     return {
         "config_mode": config_mode,
         "leakage_guard_mode": leakage_guard_mode,
         "stop_after": stop_after,
+        "research_profile": research_profile,
         "fail_on_autocorrect": fail_on_autocorrect,
     }
 
@@ -757,9 +921,12 @@ def _normalize_custom_transforms(raw: Any) -> list[dict[str, Any]]:
     return out
 
 
-def _normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str, Any]:
+def _normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope, profile: str) -> dict[str, Any]:
     raw = _as_dict(cfg.get("research"))
-    horizons_raw = _as_list(raw.get("horizons"))
+    profile_key = profile if profile in {"fast", "dev", "full"} else "full"
+    profile_defaults = RESEARCH_PROFILE_DEFAULTS[scope][profile_key]
+
+    horizons_raw = _as_list(raw.get("horizons", profile_defaults["horizons"]))
     horizons = sorted(
         {
             _to_int(x, 0)
@@ -768,15 +935,19 @@ def _normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str
         }
     )
     if not horizons:
-        horizons = [1, 5, 10, 20]
+        horizons = list(profile_defaults["horizons"])
 
-    missing_policy = str(raw.get("missing_policy", "drop")).strip().lower()
+    missing_policy = str(raw.get("missing_policy", profile_defaults["missing_policy"])).strip().lower()
     allowed_missing = {"drop", "fill_zero", "ffill_by_asset", "cs_median_by_date", "keep"}
     if missing_policy not in allowed_missing:
         LOGGER.warning("Invalid research.missing_policy='%s'. Use 'drop'.", missing_policy)
         missing_policy = "drop"
 
-    default_steps = ["winsorize", "standardize", "neutralize"] if scope == "cs" else []
+    default_steps = (
+        list(profile_defaults["preprocess_steps"])
+        if scope == "cs"
+        else []
+    )
     steps_raw = [
         str(x).strip().lower()
         for x in _as_list(raw.get("preprocess_steps", default_steps))
@@ -794,7 +965,7 @@ def _normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str
         preprocess_steps = default_steps.copy()
 
     ts_signal_lags: list[int] = []
-    for x in _as_list(raw.get("ts_signal_lags")):
+    for x in _as_list(raw.get("ts_signal_lags", profile_defaults.get("ts_signal_lags"))):
         try:
             v = int(x)
         except Exception:
@@ -803,7 +974,7 @@ def _normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str
             continue
         ts_signal_lags.append(v)
     if not ts_signal_lags:
-        ts_signal_lags = [0, 1, 2, 5, 10]
+        ts_signal_lags = list(profile_defaults.get("ts_signal_lags", [0, 1, 2, 5, 10]))
     ts_signal_lags = sorted(set(ts_signal_lags))
     if 0 not in ts_signal_lags:
         ts_signal_lags = [0, *ts_signal_lags]
@@ -825,12 +996,19 @@ def _normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str
         transform_plugin_on_error = "raise"
 
     out = {
+        "profile": profile_key,
         "horizons": horizons,
-        "quantiles": max(2, _to_int(raw.get("quantiles"), 5)),
-        "ic_rolling_window": max(5, _to_int(raw.get("ic_rolling_window"), 20)),
-        "annualization_days": max(1, _to_int(raw.get("annualization_days"), 252)),
-        "ts_standardize_window": max(5, _to_int(raw.get("ts_standardize_window"), 60)),
-        "ts_quantile_lookback": max(10, _to_int(raw.get("ts_quantile_lookback"), 60)),
+        "quantiles": max(2, _to_int(raw.get("quantiles"), int(profile_defaults["quantiles"]))),
+        "ic_rolling_window": max(5, _to_int(raw.get("ic_rolling_window"), int(profile_defaults["ic_rolling_window"]))),
+        "annualization_days": max(1, _to_int(raw.get("annualization_days"), int(profile_defaults["annualization_days"]))),
+        "ts_standardize_window": max(
+            5,
+            _to_int(raw.get("ts_standardize_window"), int(profile_defaults.get("ts_standardize_window", 60))),
+        ),
+        "ts_quantile_lookback": max(
+            10,
+            _to_int(raw.get("ts_quantile_lookback"), int(profile_defaults.get("ts_quantile_lookback", 60))),
+        ),
         "ts_signal_lags": ts_signal_lags,
         "missing_policy": missing_policy,
         "preprocess_steps": preprocess_steps,
@@ -919,15 +1097,37 @@ def _normalize_universe_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def load_run_config(path: str | Path) -> dict[str, Any]:
-    """从文件加载 YAML 运行配置。"""
-    p = Path(path)
-    if not p.exists():
-        raise FileNotFoundError(f"Config file not found: {p}")
-    payload = yaml.safe_load(p.read_text(encoding="utf-8"))
+def _load_run_config_with_imports(path: Path, chain: tuple[Path, ...] = ()) -> dict[str, Any]:
+    resolved = path.expanduser().resolve()
+    if resolved in chain:
+        cycle = " -> ".join(str(x) for x in [*chain, resolved])
+        raise ValueError(f"Circular config imports detected: {cycle}")
+    if not resolved.exists():
+        raise FileNotFoundError(f"Config file not found: {resolved}")
+
+    payload = yaml.safe_load(resolved.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
-        raise ValueError("Config must be a YAML object.")
-    return payload
+        raise ValueError(f"Config must be a YAML object: {resolved}")
+
+    import_items: list[str] = []
+    for import_key in ("imports", "extends"):
+        if import_key not in payload:
+            continue
+        import_items.extend([str(x).strip() for x in _as_list(payload.pop(import_key)) if str(x).strip()])
+
+    merged: dict[str, Any] = {}
+    for item in import_items:
+        import_path = Path(item)
+        if not import_path.is_absolute():
+            import_path = resolved.parent / import_path
+        parent_payload = _load_run_config_with_imports(import_path, chain=(*chain, resolved))
+        merged = deep_merge_dict(merged, parent_payload)
+    return deep_merge_dict(merged, payload)
+
+
+def load_run_config(path: str | Path) -> dict[str, Any]:
+    """从文件加载 YAML 运行配置，支持 `imports`/`extends` 分层。"""
+    return _load_run_config_with_imports(Path(path))
 
 
 def deep_merge_dict(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
@@ -1053,11 +1253,11 @@ def apply_config_override(cfg: dict[str, Any], override: str) -> dict[str, Any]:
     return out
 
 
-def compose_run_config(
+def compose_run_config_with_alias_report(
     config_paths: list[str | Path],
     overrides: list[str] | None = None,
-) -> dict[str, Any]:
-    """由多份 YAML 与覆盖项合成有效运行配置。"""
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """由多份 YAML 与覆盖项合成有效运行配置，并返回别名迁移记录。"""
     if not config_paths:
         raise ValueError("At least one config path is required.")
 
@@ -1067,6 +1267,15 @@ def compose_run_config(
 
     for ov in overrides or []:
         merged = apply_config_override(merged, ov)
+    return normalize_run_config_aliases(merged)
+
+
+def compose_run_config(
+    config_paths: list[str | Path],
+    overrides: list[str] | None = None,
+) -> dict[str, Any]:
+    """由多份 YAML 与覆盖项合成有效运行配置。"""
+    merged, _ = compose_run_config_with_alias_report(config_paths=config_paths, overrides=overrides)
     return merged
 
 
@@ -1149,8 +1358,15 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
 
     if not isinstance(cfg, dict):
         raise ValueError("Config root must be a YAML object (dict).")
+    cfg, alias_events = normalize_run_config_aliases(cfg)
+    for event in alias_events:
+        if event["applied"]:
+            warnings.append(
+                f"alias migrated: {event['alias']} -> {event['canonical']} "
+                "(建议改为标准键，避免后续歧义)。"
+            )
 
-    root_allowed = {"run", "data", "factor", "research", "backtest", "universe_filter"}
+    root_allowed = {"run", "data", "factor", "research", "backtest", "universe_filter", "imports"}
     root_required = {"run", "data", "factor", "research"}
 
     for key in sorted(set(cfg) - root_allowed):
@@ -1176,6 +1392,9 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     stop_after = str(run_cfg.get("stop_after", "backtest")).strip().lower()
     if stop_after not in {"factor", "research", "backtest"}:
         errors.append("run.stop_after: must be one of ['factor', 'research', 'backtest'].")
+    research_profile = str(run_cfg.get("research_profile", "full")).strip().lower()
+    if research_profile not in {"fast", "dev", "full"}:
+        errors.append("run.research_profile: must be one of ['fast', 'dev', 'full'].")
     if "fail_on_autocorrect" in run_cfg and not isinstance(run_cfg.get("fail_on_autocorrect"), bool):
         errors.append("run.fail_on_autocorrect: must be boolean when provided.")
 
@@ -1259,7 +1478,7 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     research_cfg = _as_dict(cfg.get("research"))
     horizons = _as_list(research_cfg.get("horizons"))
     if not horizons:
-        errors.append("research.horizons: must be a non-empty list of positive ints.")
+        warnings.append("research.horizons: not provided; runtime defaults/profile presets will be used.")
     else:
         for h in horizons:
             try:
@@ -2094,7 +2313,8 @@ def run_from_config(
     validate_schema: bool = True,
 ) -> ConfigRunResult:
     """按 YAML/字典配置执行 TS/CS 因子研究流程。"""
-    raw_cfg = load_run_config(config) if not isinstance(config, dict) else dict(config)
+    raw_cfg_loaded = load_run_config(config) if not isinstance(config, dict) else dict(config)
+    raw_cfg, alias_events = normalize_run_config_aliases(raw_cfg_loaded)
     governance_cfg = _normalize_run_governance_cfg(raw_cfg)
     schema_warnings: list[str] = []
     if validate_schema:
@@ -2102,7 +2322,11 @@ def run_from_config(
     scope_cfg = _normalize_factor_scope(raw_cfg)
     data_cfg = _normalize_data_cfg(raw_cfg, scope=scope_cfg["factor_scope"])
     fac_cfg = _normalize_factor_cfg(raw_cfg)
-    research_cfg = _normalize_research_cfg(raw_cfg, scope=scope_cfg["factor_scope"])
+    research_cfg = _normalize_research_cfg(
+        raw_cfg,
+        scope=scope_cfg["factor_scope"],
+        profile=str(governance_cfg["research_profile"]),
+    )
     back_cfg = _normalize_backtest_cfg(raw_cfg, scope=scope_cfg["factor_scope"])
     universe_cfg = _normalize_universe_cfg(raw_cfg)
     autocorrections = _collect_normalization_autocorrections(
@@ -2399,6 +2623,8 @@ def run_from_config(
         },
         "config_governance": {
             **governance_cfg,
+            "alias_migration_count": len(alias_events),
+            "alias_migrations": alias_events,
             "autocorrection_count": len(autocorrections),
             "autocorrections": autocorrections,
             "schema_validation_enabled": bool(validate_schema),

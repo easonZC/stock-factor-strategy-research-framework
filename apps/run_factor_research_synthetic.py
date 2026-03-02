@@ -1,4 +1,7 @@
-"""模块说明。"""
+"""合成数据因子研究入口。
+
+快速生成 synthetic 面板并输出完整因子研究报告，用于端到端冒烟验证。
+"""
 
 from __future__ import annotations
 

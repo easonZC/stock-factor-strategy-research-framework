@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""配置驱动运行流程集成测试。"""
 
 from __future__ import annotations
 
@@ -165,6 +165,34 @@ def test_run_from_config_warn_skip_factor_and_flexible_preprocess(tmp_path) -> N
     assert meta["factors"]["requested"] == ["momentum_20", "not_exists_factor"]
     assert meta["factors"]["effective"] == ["momentum_20"]
     assert meta["factors"]["on_missing"] == "warn_skip"
+
+
+def test_run_from_config_applies_fast_research_profile_defaults(tmp_path) -> None:
+    cfg = {
+        "run": {
+            "factor_scope": "cs",
+            "eval_axis": "cross_section",
+            "standardization": "cs_zscore",
+            "research_profile": "fast",
+        },
+        "data": {
+            "mode": "panel",
+            "adapter": "synthetic",
+            "fields_required": ["date", "asset", "close", "volume", "mkt_cap", "industry"],
+            "synthetic": {"n_assets": 8, "n_days": 150, "seed": 41, "start_date": "2020-01-01"},
+        },
+        "factor": {"names": ["momentum_20"]},
+        "research": {},
+        "backtest": {"enabled": False},
+    }
+    out_dir = tmp_path / "out_profile_fast"
+    res = run_from_config(cfg, out_dir=out_dir)
+    meta = json.loads(res.run_meta_json.read_text(encoding="utf-8"))
+    r_cfg = meta["research"]["config"]
+    assert r_cfg["profile"] == "fast"
+    assert r_cfg["horizons"] == [1, 5]
+    assert r_cfg["quantiles"] == 3
+    assert r_cfg["preprocess_steps"] == ["standardize"]
 
 
 def test_run_from_config_stop_after_factor_stage(tmp_path) -> None:
