@@ -129,10 +129,11 @@ def _merge_registry(
     out = dict(base)
     for name, ctor in incoming.items():
         if name in out:
-            msg = f"Factor '{name}' already registered; override by plugin source: {source}"
+            msg = f"Factor '{name}' already registered; plugin source={source}"
             if on_error == "raise":
                 raise ValueError(msg)
             LOGGER.warning(msg)
+            continue
         out[name] = ctor
     return out
 
