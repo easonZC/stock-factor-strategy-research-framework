@@ -26,8 +26,9 @@ FactorLab v2 separates orchestration from reusable research logic:
 - TS pipeline: `factorlab.research.TimeSeriesFactorResearchPipeline`
 - Outputs:
   - `index.html`
-  - `assets/*.png`
-  - `tables/*.csv`
+  - `assets/factors/<factor>/<variant>/*.png`
+  - `tables/factors/<factor>/<variant>/*.csv`
+  - global summary/diagnostics at `assets/*` and `tables/*`
   - `config.json`
 
 5. Optional backtest:

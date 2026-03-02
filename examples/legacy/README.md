@@ -3,5 +3,9 @@
 This folder contains internship/legacy code and reference artifacts.
 
 - It is preserved for traceability only.
-- It is **not** part of the SSF v2 runtime path.
-- New development should happen in `src/ssf` and `scripts/`.
+- It is **not** part of the FactorLab runtime path.
+- New development should happen in `core/factorlab` and `apps/`.
+
+## Where Are The Old Factors?
+- Canonical legacy source: `examples/legacy/src_legacy_v1/program/factors/`
+- Fast index (recommended): `examples/legacy/archive/legacy_factor_index.md`

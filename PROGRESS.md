@@ -53,6 +53,43 @@ For every complete run, append one new entry at the top of `Run History` with:
 
 ## Run History
 
+### Run 2026-03-01-006
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal: Improve professional naming, archive legacy factors for discoverability, and reorganize report outputs by factor hierarchy.
+- Changes:
+  - Renamed app entrypoints to remove `demo_*` naming:
+    - `apps/demo_factor_research.py` -> `apps/run_factor_research_synthetic.py`
+    - `apps/demo_strategy_backtest.py` -> `apps/run_strategy_backtest_synthetic.py`
+  - Updated default output roots to hierarchical research paths:
+    - factor reports: `outputs/research/factor/...`
+    - strategy reports: `outputs/research/strategy/...`
+    - model-factor benchmark: `outputs/research/model_factor/benchmark`
+  - Refactored report artifact layout for readability:
+    - factor-specific images now under `assets/factors/<factor>/<variant>/`
+    - factor-specific tables now under `tables/factors/<factor>/<variant>/`
+    - only global artifacts remain in root `assets/` and `tables/`.
+  - Added clear legacy factor archive index:
+    - `examples/legacy/archive/legacy_factor_index.md`
+    - `examples/legacy/archive/README.md`
+  - Updated legacy docs/README for direct discoverability of old factors.
+  - Cleaned local generated clutter:
+    - removed old ad-hoc `outputs/*` report folders and old demo panel parquet files in `data/`.
+- Validation commands:
+  - `ruff check core apps tests`
+  - `pytest -q`
+  - `python3 apps/run_factor_research_synthetic.py --out outputs/research/factor/synthetic_report --assets 10 --days 120`
+  - `python3 apps/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/research/factor/config_cs`
+  - `python3 apps/run_strategy_backtest_synthetic.py --out outputs/research/strategy/synthetic_backtest`
+- Validation summary:
+  - Lint passed.
+  - Tests passed: `10 passed`.
+  - Synthetic/config/strategy runs completed with the new hierarchical output tree.
+- Git actions:
+  - Pending in this run: commit/push this naming+output-structure refinement and update PR #3.
+- Next run direction:
+  - Continue improving report UX (index sections and navigation) while keeping hierarchical artifact storage.
+  - Expand strategy-side report folder conventions for multi-strategy comparative runs.
+
 ### Run 2026-03-01-005
 - Time: 2026-03-01 (America/Los_Angeles)
 - Goal: Rename confusing project naming (`scripts/src/ssf`) to professional names and address Codex PR P1 findings.

@@ -31,7 +31,11 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated factor names",
     )
     parser.add_argument("--horizons", nargs="+", type=int, default=[1, 5, 10, 20], help="Forward-return horizons")
-    parser.add_argument("--out", default="outputs/factor_report", help="Output directory")
+    parser.add_argument(
+        "--out",
+        default="outputs/research/factor/panel_report",
+        help="Output directory",
+    )
     parser.add_argument("--neutralize", choices=["none", "size", "industry", "both"], default="both")
     parser.add_argument("--winsorize", choices=["quantile", "mad"], default="quantile")
     parser.add_argument("--max-assets", type=int, default=None, help="Optional cap on number of assets")

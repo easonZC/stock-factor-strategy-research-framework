@@ -30,9 +30,9 @@ jobs:
         run: |
           pytest -q
 
-      - name: Demo smoke
+      - name: Synthetic Report Smoke
         run: |
-          python apps/demo_factor_research.py --out outputs/factor_report_ci --assets 10 --days 90
-          test -f outputs/factor_report_ci/index.html
-          test -f outputs/factor_report_ci/tables/summary.csv
-          test "$(ls outputs/factor_report_ci/assets/*.png | wc -l)" -ge 6
+          python apps/run_factor_research_synthetic.py --out outputs/research/factor/ci_smoke --assets 10 --days 90
+          test -f outputs/research/factor/ci_smoke/index.html
+          test -f outputs/research/factor/ci_smoke/tables/summary.csv
+          test "$(find outputs/research/factor/ci_smoke/assets -name '*.png' | wc -l)" -ge 6

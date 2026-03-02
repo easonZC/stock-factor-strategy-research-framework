@@ -21,7 +21,11 @@ LOGGER = get_logger("factorlab.run_model_factor_benchmark")
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Benchmark multiple model factors on one panel.")
     parser.add_argument("--panel", required=True, help="Panel path (.parquet/.csv)")
-    parser.add_argument("--out", default="outputs/model_factor_benchmark", help="Output directory")
+    parser.add_argument(
+        "--out",
+        default="outputs/research/model_factor/benchmark",
+        help="Output directory",
+    )
     parser.add_argument(
         "--models",
         default="lgbm,mlp",

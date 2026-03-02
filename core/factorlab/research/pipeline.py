@@ -107,6 +107,10 @@ class FactorResearchPipeline:
 
             for variant in ["raw", "neutralized"]:
                 col = f"{fac}_{variant}"
+                fac_asset_dir = assets_dir / "factors" / fac / variant
+                fac_table_dir = tables_dir / "factors" / fac / variant
+                fac_asset_dir.mkdir(parents=True, exist_ok=True)
+                fac_table_dir.mkdir(parents=True, exist_ok=True)
 
                 # IC/RankIC across horizons
                 horizon_rows = []
@@ -126,7 +130,7 @@ class FactorResearchPipeline:
                     horizon_rows.append(stats_row)
                     summary_rows.append(stats_row)
 
-                    path_ic_csv = tables_dir / f"{fac}_{variant}_ic_daily_h{h}.csv"
+                    path_ic_csv = fac_table_dir / f"ic_daily_h{h}.csv"
                     ic_daily.to_csv(path_ic_csv, index=False)
                     fac_table_paths.append(path_ic_csv)
 
@@ -135,11 +139,15 @@ class FactorResearchPipeline:
 
                 # decay table + plot
                 decay_df = build_ic_decay(horizon_rows)
-                decay_csv = tables_dir / f"{fac}_{variant}_ic_decay.csv"
+                decay_csv = fac_table_dir / "ic_decay.csv"
                 decay_df.to_csv(decay_csv, index=False)
                 fac_table_paths.append(decay_csv)
                 fac_fig_paths.append(
-                    plot_ic_decay(decay_df, assets_dir / f"{fac}_{variant}_ic_decay.png", title=f"{fac} [{variant}] IC decay")
+                    plot_ic_decay(
+                        decay_df,
+                        fac_asset_dir / "ic_decay.png",
+                        title=f"{fac} [{variant}] IC decay",
+                    )
                 )
 
                 # primary horizon quantile analysis
@@ -156,16 +164,16 @@ class FactorResearchPipeline:
                     quantiles=self.config.quantiles,
                 )
 
-                q_daily_csv = tables_dir / f"{fac}_{variant}_quantile_daily.csv"
-                q_nav_csv = tables_dir / f"{fac}_{variant}_quantile_nav.csv"
-                q_turn_csv = tables_dir / f"{fac}_{variant}_turnover.csv"
+                q_daily_csv = fac_table_dir / "quantile_daily.csv"
+                q_nav_csv = fac_table_dir / "quantile_nav.csv"
+                q_turn_csv = fac_table_dir / "turnover.csv"
                 q_daily.to_csv(q_daily_csv, index=False)
                 q_nav.to_csv(q_nav_csv, index=False)
                 q_turn.to_csv(q_turn_csv, index=False)
                 fac_table_paths.extend([q_daily_csv, q_nav_csv, q_turn_csv])
 
                 q_profile = summarize_quantile_profile(q_daily, annualization_days=252)
-                q_profile_csv = tables_dir / f"{fac}_{variant}_quantile_profile.csv"
+                q_profile_csv = fac_table_dir / "quantile_profile.csv"
                 q_profile.to_csv(q_profile_csv, index=False)
                 fac_table_paths.append(q_profile_csv)
 
@@ -179,7 +187,7 @@ class FactorResearchPipeline:
                     lag=1,
                 )
                 rank_ac_mean = float(rank_ac["rank_autocorr_lag1"].mean()) if not rank_ac.empty else float("nan")
-                rank_ac_csv = tables_dir / f"{fac}_{variant}_rank_autocorr_lag1.csv"
+                rank_ac_csv = fac_table_dir / "rank_autocorr_lag1.csv"
                 rank_ac.to_csv(rank_ac_csv, index=False)
                 fac_table_paths.append(rank_ac_csv)
                 ls_diagnostics = {
@@ -187,7 +195,7 @@ class FactorResearchPipeline:
                     **ls_reg,
                     "rank_autocorr_lag1_mean": rank_ac_mean,
                 }
-                ls_diag_csv = tables_dir / f"{fac}_{variant}_long_short_diagnostics.csv"
+                ls_diag_csv = fac_table_dir / "long_short_diagnostics.csv"
                 pd.DataFrame([ls_diagnostics]).to_csv(ls_diag_csv, index=False)
                 fac_table_paths.append(ls_diag_csv)
 
@@ -229,23 +237,43 @@ class FactorResearchPipeline:
 
                 # diagnostics
                 cov = coverage_by_date(panel[["date", "asset", col]].rename(columns={col: "factor"}), "factor")
-                cov_csv = tables_dir / f"{fac}_{variant}_coverage.csv"
+                cov_csv = fac_table_dir / "coverage.csv"
                 cov.to_csv(cov_csv, index=False)
                 fac_table_paths.append(cov_csv)
 
                 st = factor_stability(panel[["date", "asset", col]].rename(columns={col: "factor"}), "factor")
-                st_csv = tables_dir / f"{fac}_{variant}_stability.csv"
+                st_csv = fac_table_dir / "stability.csv"
                 st.to_csv(st_csv, index=False)
                 fac_table_paths.append(st_csv)
 
                 # plots (key)
                 fac_fig_paths.extend(
                     [
-                        plot_ic_series(daily_ic_primary, assets_dir / f"{fac}_{variant}_ic.png", title=f"{fac} [{variant}] IC"),
-                        plot_quantile_nav(q_nav, assets_dir / f"{fac}_{variant}_quantile_nav.png", title=f"{fac} [{variant}] Quantile NAV"),
-                        plot_turnover(q_turn, assets_dir / f"{fac}_{variant}_turnover.png", title=f"{fac} [{variant}] Turnover"),
-                        plot_coverage(cov, assets_dir / f"{fac}_{variant}_coverage.png", title=f"{fac} [{variant}] Coverage"),
-                        plot_stability(st, assets_dir / f"{fac}_{variant}_stability.png", title=f"{fac} [{variant}] Stability"),
+                        plot_ic_series(
+                            daily_ic_primary,
+                            fac_asset_dir / "ic.png",
+                            title=f"{fac} [{variant}] IC",
+                        ),
+                        plot_quantile_nav(
+                            q_nav,
+                            fac_asset_dir / "quantile_nav.png",
+                            title=f"{fac} [{variant}] Quantile NAV",
+                        ),
+                        plot_turnover(
+                            q_turn,
+                            fac_asset_dir / "turnover.png",
+                            title=f"{fac} [{variant}] Turnover",
+                        ),
+                        plot_coverage(
+                            cov,
+                            fac_asset_dir / "coverage.png",
+                            title=f"{fac} [{variant}] Coverage",
+                        ),
+                        plot_stability(
+                            st,
+                            fac_asset_dir / "stability.png",
+                            title=f"{fac} [{variant}] Stability",
+                        ),
                     ]
                 )
 

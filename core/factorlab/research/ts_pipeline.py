@@ -195,6 +195,10 @@ class TimeSeriesFactorResearchPipeline:
             fac_std = _standardize_ts_factor(panel, factor_col=fac, cfg=self.config)
             panel[f"{fac}_ts"] = fac_std
             outlier_rows.append(outlier_monitor(fac_raw, fac_std, fac))
+            fac_asset_dir = assets_dir / "factors" / fac / "ts"
+            fac_table_dir = tables_dir / "factors" / fac / "ts"
+            fac_asset_dir.mkdir(parents=True, exist_ok=True)
+            fac_table_dir.mkdir(parents=True, exist_ok=True)
 
             fac_tables: list[Path] = []
             fac_figs: list[Path] = []
@@ -223,7 +227,7 @@ class TimeSeriesFactorResearchPipeline:
                 stats_row.update(stats)
                 summary_rows.append(stats_row)
 
-                ic_path = tables_dir / f"{fac}_ts_ic_daily_h{h}.csv"
+                ic_path = fac_table_dir / f"ic_daily_h{h}.csv"
                 ic_daily.to_csv(ic_path, index=False)
                 fac_tables.append(ic_path)
 
@@ -239,16 +243,16 @@ class TimeSeriesFactorResearchPipeline:
                 quantiles=int(self.config.quantiles),
                 lookback=max(10, int(self.config.ts_quantile_lookback)),
             )
-            q_daily_path = tables_dir / f"{fac}_ts_quantile_daily.csv"
-            q_nav_path = tables_dir / f"{fac}_ts_quantile_nav.csv"
-            q_turn_path = tables_dir / f"{fac}_ts_turnover.csv"
+            q_daily_path = fac_table_dir / "quantile_daily.csv"
+            q_nav_path = fac_table_dir / "quantile_nav.csv"
+            q_turn_path = fac_table_dir / "turnover.csv"
             q_daily.to_csv(q_daily_path, index=False)
             q_nav.to_csv(q_nav_path, index=False)
             q_turn.to_csv(q_turn_path, index=False)
             fac_tables.extend([q_daily_path, q_nav_path, q_turn_path])
 
             q_profile = summarize_quantile_profile(q_daily, annualization_days=252)
-            q_profile_path = tables_dir / f"{fac}_ts_quantile_profile.csv"
+            q_profile_path = fac_table_dir / "quantile_profile.csv"
             q_profile.to_csv(q_profile_path, index=False)
             fac_tables.append(q_profile_path)
 
@@ -283,24 +287,24 @@ class TimeSeriesFactorResearchPipeline:
                 panel[["date", "asset", f"{fac}_ts"]].rename(columns={f"{fac}_ts": "factor"}),
                 "factor",
             )
-            cov_path = tables_dir / f"{fac}_ts_coverage.csv"
+            cov_path = fac_table_dir / "coverage.csv"
             cov.to_csv(cov_path, index=False)
             fac_tables.append(cov_path)
 
             fac_figs.extend(
                 [
-                    plot_ic_series(ic_primary, assets_dir / f"{fac}_ts_ic.png", title=f"{fac} [ts] IC"),
+                    plot_ic_series(ic_primary, fac_asset_dir / "ic.png", title=f"{fac} [ts] IC"),
                     plot_quantile_nav(
                         q_nav,
-                        assets_dir / f"{fac}_ts_quantile_nav.png",
+                        fac_asset_dir / "quantile_nav.png",
                         title=f"{fac} [ts] Time-Quantile NAV",
                     ),
                     plot_turnover(
                         q_turn,
-                        assets_dir / f"{fac}_ts_turnover.png",
+                        fac_asset_dir / "turnover.png",
                         title=f"{fac} [ts] Time-Quantile Turnover",
                     ),
-                    plot_coverage(cov, assets_dir / f"{fac}_ts_coverage.png", title=f"{fac} [ts] Coverage"),
+                    plot_coverage(cov, fac_asset_dir / "coverage.png", title=f"{fac} [ts] Coverage"),
                 ]
             )
 

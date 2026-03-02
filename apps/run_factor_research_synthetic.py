@@ -1,4 +1,4 @@
-﻿"""Synthetic end-to-end factor research demo entrypoint."""
+"""Synthetic end-to-end factor research entrypoint."""
 
 from __future__ import annotations
 
@@ -18,8 +18,12 @@ from factorlab.research import FactorResearchPipeline
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run synthetic factor-research demo.")
-    parser.add_argument("--out", default="outputs/factor_report_demo", help="Output report directory")
+    parser = argparse.ArgumentParser(description="Run synthetic factor-research report.")
+    parser.add_argument(
+        "--out",
+        default="outputs/research/factor/synthetic_report",
+        help="Output report directory",
+    )
     parser.add_argument("--assets", type=int, default=30, help="Synthetic asset count")
     parser.add_argument("--days", type=int, default=220, help="Synthetic day count")
     return parser.parse_args()
@@ -38,4 +42,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

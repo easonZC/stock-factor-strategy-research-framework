@@ -1,4 +1,4 @@
-﻿"""Run a small synthetic strategy backtest demo (TopK + LongShort)."""
+"""Run a synthetic strategy backtest (TopK + LongShort)."""
 
 from __future__ import annotations
 
@@ -22,7 +22,11 @@ from factorlab.strategies import LongShortQuantileStrategy, TopKLongStrategy
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
-    p.add_argument("--out", default="outputs/strategy_demo", help="Output directory")
+    p.add_argument(
+        "--out",
+        default="outputs/research/strategy/synthetic_backtest",
+        help="Output directory",
+    )
     return p.parse_args()
 
 

@@ -7,12 +7,12 @@ import sys
 from pathlib import Path
 
 
-def test_demo_report_smoke(tmp_path: Path) -> None:
-    out_dir = tmp_path / "factor_report_demo"
+def test_synthetic_report_smoke(tmp_path: Path) -> None:
+    out_dir = tmp_path / "research" / "factor" / "synthetic_report"
     root = Path(__file__).resolve().parents[1]
     cmd = [
         sys.executable,
-        str(root / "apps" / "demo_factor_research.py"),
+        str(root / "apps" / "run_factor_research_synthetic.py"),
         "--out",
         str(out_dir),
         "--assets",
@@ -25,5 +25,5 @@ def test_demo_report_smoke(tmp_path: Path) -> None:
     assert (out_dir / "index.html").exists()
     assert (out_dir / "tables" / "summary.csv").exists()
 
-    pngs = list((out_dir / "assets").glob("*.png"))
+    pngs = list((out_dir / "assets").rglob("*.png"))
     assert len(pngs) >= 6

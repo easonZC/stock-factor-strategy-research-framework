@@ -56,7 +56,7 @@ If your environment exposes `python` directly, you can use `python` instead of `
 
 ### A) Synthetic report (must run end-to-end)
 ```bash
-python apps/demo_factor_research.py --out outputs/factor_report_demo
+python apps/run_factor_research_synthetic.py --out outputs/research/factor/synthetic_report
 ```
 
 ### B) Panel input
@@ -65,25 +65,25 @@ python apps/run_factor_research.py \
   --panel <path> \
   --factors momentum_20,volatility_20,liquidity_shock \
   --horizons 1 5 10 20 \
-  --out outputs/factor_report
+  --out outputs/research/factor/panel_report
 ```
 
 ### C) Sina folder adapter
 ```bash
 python apps/prepare_data.py --adapter sina --data-dir /stock_sina_update --out data/panel.parquet
-python apps/run_factor_research.py --panel data/panel.parquet --out outputs/factor_report_sina
+python apps/run_factor_research.py --panel data/panel.parquet --out outputs/research/factor/sina_report
 ```
 
 ## Config-Driven One-Click Runs (TS/CS)
 
 ### CS example
 ```bash
-python apps/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/cs_factor_demo
+python apps/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/research/factor/config_cs
 ```
 
 ### TS example
 ```bash
-python apps/run_from_config.py --config configs/ts_factor_demo.yaml --out outputs/ts_factor_demo
+python apps/run_from_config.py --config configs/ts_factor_demo.yaml --out outputs/research/factor/config_ts
 ```
 
 ### Required config keys
@@ -93,28 +93,44 @@ python apps/run_from_config.py --config configs/ts_factor_demo.yaml --out output
 
 ## Typical Report Output Tree
 ```text
-outputs/factor_report/
+outputs/research/factor/panel_report/
   index.html
   config.json
   assets/
-    *_ic.png
-    *_quantile_nav.png
-    *_turnover.png
-    *_coverage.png
-    *_ic_decay.png
     factor_corr_spearman.png
+    outlier_before_after.png
+    factors/
+      <factor_name>/
+        raw/
+          ic.png
+          ic_decay.png
+          quantile_nav.png
+          turnover.png
+          coverage.png
+          stability.png
+        neutralized/
+          ...
+      <factor_name>/ts/
+        ...
   tables/
     summary.csv
     missing_rates.csv
-    *_ic_daily_h*.csv
-    *_ic_decay.csv
-    *_quantile_daily.csv
-    *_quantile_nav.csv
-    *_turnover.csv
-    *_coverage.csv
-    *_stability.csv
     factor_corr_spearman.csv
     factor_corr_pearson.csv
+    factors/
+      <factor_name>/
+        raw/
+          ic_daily_h1.csv
+          ic_daily_h5.csv
+          ic_decay.csv
+          quantile_daily.csv
+          quantile_nav.csv
+          turnover.csv
+          coverage.csv
+          stability.csv
+          ...
+        neutralized/
+          ...
 ```
 
 ## Data Safety Policy
@@ -129,4 +145,4 @@ ruff check core apps tests
 pytest -q
 ```
 
-CI (`.github/workflows/ci.yml`) runs lint + pytest + demo smoke artifact checks.
+CI (`.github/workflows/ci.yml`) runs lint + pytest + synthetic smoke artifact checks.
