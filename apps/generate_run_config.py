@@ -129,6 +129,10 @@ def build_template(scope: str, adapter: str, factors: list[str]) -> dict[str, An
             "enabled": False,
             "strategy": {
                 "mode": "sign" if scope == "ts" else "longshort",
+                "auto_discover": False,
+                "plugin_dirs": [],
+                "plugins": [],
+                "plugin_on_error": "raise",
             },
             "commission_bps": 3.0,
             "slippage_bps": 2.0,

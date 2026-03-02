@@ -145,6 +145,20 @@ Expressions are evaluated with a safe parser (no arbitrary code execution). Supp
 - unary: `+x`, `-x`
 - functions: `abs(x)`, `log1p(x)`, `exp(x)`, `sqrt(x)`, `clip(x, lo, hi)`
 
+### Strategy Plugin Example
+```yaml
+backtest:
+  enabled: true
+  strategy:
+    mode: turnover_guarded_ls
+    auto_discover: true
+    plugin_dirs:
+      - plugins/strategies
+    plugin_on_error: raise
+```
+
+Custom strategy mode is allowed when strategy plugins are configured (`plugin_dirs` or `plugins`).
+
 ## Typical Report Output Tree
 ```text
 outputs/research/factor/panel_report/

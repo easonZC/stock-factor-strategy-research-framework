@@ -62,3 +62,15 @@ def test_run_from_config_can_skip_schema_validation(tmp_path: Path) -> None:
     res = run_from_config(cfg, out_dir=tmp_path / "skip_ok", validate_schema=False)
     assert res.index_html.exists()
     assert res.summary_csv.exists()
+
+
+def test_validate_schema_custom_strategy_mode_requires_plugins() -> None:
+    cfg = _valid_cfg()
+    cfg["backtest"] = {
+        "enabled": True,
+        "strategy": {
+            "mode": "custom_strategy_name",
+        },
+    }
+    with pytest.raises(ValueError, match="backtest.strategy.mode"):
+        validate_run_config_schema(cfg, strict=True)

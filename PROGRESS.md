@@ -53,6 +53,53 @@ For every complete run, append one new entry at the top of `Run History` with:
 
 ## Run History
 
+### Run 2026-03-01-011
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal: Implement strategy plugin registry symmetry (matching factor plugins) and wire it into config-driven backtesting.
+- Changes:
+  - Added strategy plugin registry system:
+    - `core/factorlab/strategies/factory.py`
+      - default strategy registry (`topk`, `longshort`, `flex`)
+      - plugin auto-discovery from folders (`discover_strategy_registry`)
+      - plugin loading via module/class specs (`load_strategy_plugins`)
+      - unified builder (`build_strategy_registry`)
+  - Exported strategy plugin APIs:
+    - `core/factorlab/strategies/__init__.py`
+  - Integrated strategy plugins into config runner backtest path:
+    - `core/factorlab/workflows/config_runner.py`
+      - `backtest.strategy` now supports:
+        - `auto_discover`
+        - `plugin_dirs`
+        - `plugins`
+        - `plugin_on_error`
+      - custom `backtest.strategy.mode` values now resolve through strategy plugin registry.
+      - keeps built-in strategy modes unchanged (`sign/topk/longshort/flex`).
+  - Extended schema pre-validation:
+    - custom strategy mode now requires configured strategy plugins.
+    - validates `backtest.strategy.plugin_on_error`.
+  - Updated config generator defaults:
+    - `apps/generate_run_config.py` now includes strategy plugin config keys.
+  - Updated README:
+    - added strategy plugin config example.
+  - Added tests:
+    - `tests/test_strategy_plugins.py`
+    - `tests/test_config_schema_validation.py` (custom strategy mode plugin requirement).
+- Validation commands:
+  - `python3 -m ruff check core apps tests`
+  - `python3 -m pytest -q`
+  - `python3 apps/run_from_config.py --config /tmp/strategy_plugin_cfg.yaml --out outputs/research/factor/strategy_plugin_check`
+- Validation summary:
+  - Lint passed.
+  - Tests passed: `28 passed`.
+  - Plugin strategy run (custom `mode`) succeeded end-to-end with report + backtest outputs.
+- Git actions:
+  - Working branch: `feat/plugin-schema-validation-20260301` (continued stacked feature set).
+  - Local commit: pending
+  - Push: pending
+- Next run direction:
+  - Add strategy expression/recipe layer and reusable optimizer interfaces.
+  - Add explicit strategy plugin docs page with minimal templates and troubleshooting.
+
 ### Run 2026-03-01-010
 - Time: 2026-03-01 (America/Los_Angeles)
 - Goal: Implement factor expression composer (safe parser) and integrate it into config-driven one-click research workflow.

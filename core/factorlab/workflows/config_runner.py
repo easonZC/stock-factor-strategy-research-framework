@@ -35,7 +35,13 @@ from factorlab.factors import (
     extract_expression_dependencies,
 )
 from factorlab.research import FactorResearchPipeline, TSResearchConfig, TimeSeriesFactorResearchPipeline
-from factorlab.strategies import FlexibleLongShortStrategy, LongShortQuantileStrategy, Strategy, TopKLongStrategy
+from factorlab.strategies import (
+    FlexibleLongShortStrategy,
+    LongShortQuantileStrategy,
+    Strategy,
+    TopKLongStrategy,
+    build_strategy_registry,
+)
 from factorlab.utils import get_logger
 from factorlab.workflows.runtime import collect_runtime_manifest
 
@@ -326,10 +332,25 @@ def _normalize_backtest_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str
     enabled = _to_bool(raw.get("enabled"), False)
     strategy_cfg = _as_dict(raw.get("strategy"))
     default_mode = "sign" if scope == "ts" else "longshort"
-    strategy_mode = str(strategy_cfg.get("mode", default_mode)).strip().lower()
-    if strategy_mode not in {"sign", "topk", "longshort", "flex"}:
-        LOGGER.warning("Invalid backtest.strategy.mode='%s'. Use '%s'.", strategy_mode, default_mode)
-        strategy_mode = default_mode
+    strategy_mode = str(strategy_cfg.get("mode", default_mode)).strip().lower() or default_mode
+    builtin_modes = {"sign", "topk", "longshort", "flex"}
+    if strategy_mode not in builtin_modes:
+        LOGGER.info(
+            "Using custom strategy mode '%s'. Will resolve via strategy plugin registry.",
+            strategy_mode,
+        )
+
+    strategy_plugin_on_error = str(strategy_cfg.get("plugin_on_error", "raise")).strip().lower()
+    if strategy_plugin_on_error not in {"raise", "warn_skip"}:
+        LOGGER.warning(
+            "Invalid backtest.strategy.plugin_on_error='%s'. Use 'raise'.",
+            strategy_plugin_on_error,
+        )
+        strategy_plugin_on_error = "raise"
+
+    strategy_plugin_dirs = [str(x).strip() for x in _as_list(strategy_cfg.get("plugin_dirs")) if str(x).strip()]
+    strategy_auto_discover = _to_bool(strategy_cfg.get("auto_discover"), bool(strategy_plugin_dirs))
+    strategy_plugins = [x for x in _as_list(strategy_cfg.get("plugins")) if x is not None and x != ""]
 
     return {
         "enabled": enabled,
@@ -348,6 +369,10 @@ def _normalize_backtest_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str
         "leverage": max(0.1, _to_float(raw.get("leverage"), 1.0)),
         "execution_delay_days": max(0, _to_int(raw.get("execution_delay_days"), 1)),
         "execution_price_col": str(raw.get("execution_price_col", "close")).strip(),
+        "strategy_plugin_dirs": strategy_plugin_dirs,
+        "strategy_plugins": strategy_plugins,
+        "strategy_auto_discover": strategy_auto_discover,
+        "strategy_plugin_on_error": strategy_plugin_on_error,
     }
 
 
@@ -549,8 +574,18 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     back_cfg = _as_dict(cfg.get("backtest"))
     strategy_cfg = _as_dict(back_cfg.get("strategy"))
     mode_val = str(strategy_cfg.get("mode", "")).strip().lower()
-    if mode_val and mode_val not in {"sign", "topk", "longshort", "flex"}:
-        errors.append("backtest.strategy.mode: must be one of ['sign', 'topk', 'longshort', 'flex'].")
+    builtin_modes = {"sign", "topk", "longshort", "flex"}
+    if mode_val and mode_val not in builtin_modes:
+        has_plugins = bool(_as_list(strategy_cfg.get("plugins"))) or bool(_as_list(strategy_cfg.get("plugin_dirs")))
+        if not has_plugins:
+            errors.append(
+                "backtest.strategy.mode: unknown custom mode without strategy plugins. "
+                "Provide backtest.strategy.plugins or backtest.strategy.plugin_dirs."
+            )
+
+    strategy_plugin_on_error = str(strategy_cfg.get("plugin_on_error", "raise")).strip().lower()
+    if strategy_plugin_on_error not in {"raise", "warn_skip"}:
+        errors.append("backtest.strategy.plugin_on_error: must be one of ['raise', 'warn_skip'].")
 
     if errors and strict:
         msg = "Run config schema validation failed:\n" + "\n".join(f"- {x}" for x in errors)
@@ -718,7 +753,7 @@ def _compute_factors(
     return out, computable, selected
 
 
-def _build_strategy(back_cfg: dict[str, Any]) -> Strategy:
+def _build_strategy(back_cfg: dict[str, Any], strategy_registry: dict[str, Any]) -> Strategy:
     mode = back_cfg["strategy_mode"]
     if mode == "topk":
         return TopKLongStrategy(
@@ -736,15 +771,24 @@ def _build_strategy(back_cfg: dict[str, Any]) -> Strategy:
             weight_scheme=back_cfg["weight_scheme"],
             max_weight=back_cfg["max_weight"],
         )
-    return FlexibleLongShortStrategy(
-        name="flexible_long_short",
-        long_fraction=float(back_cfg["long_fraction"]),
-        short_fraction=float(back_cfg["short_fraction"]),
-        long_only=bool(back_cfg["long_only"]),
-        rebalance_every=int(back_cfg["rebalance_every"]),
-        weight_scheme=back_cfg["weight_scheme"],
-        max_weight=back_cfg["max_weight"],
-    )
+    if mode == "flex":
+        return FlexibleLongShortStrategy(
+            name="flexible_long_short",
+            long_fraction=float(back_cfg["long_fraction"]),
+            short_fraction=float(back_cfg["short_fraction"]),
+            long_only=bool(back_cfg["long_only"]),
+            rebalance_every=int(back_cfg["rebalance_every"]),
+            weight_scheme=back_cfg["weight_scheme"],
+            max_weight=back_cfg["max_weight"],
+        )
+    if mode not in strategy_registry:
+        raise KeyError(
+            f"Unknown strategy mode '{mode}'. Available strategy plugins: {sorted(strategy_registry.keys())}"
+        )
+    obj = strategy_registry[mode]()
+    if not isinstance(obj, Strategy):
+        raise TypeError(f"Registry constructor for '{mode}' did not return Strategy instance.")
+    return obj
 
 
 def _build_sign_weights(score_df: pd.DataFrame, threshold: float = 0.0) -> pd.DataFrame:
@@ -781,9 +825,15 @@ def _run_optional_backtest(
         execution_price_col=back_cfg["execution_price_col"],
     )
 
+    strategy_registry = build_strategy_registry(
+        plugin_dirs=back_cfg["strategy_plugin_dirs"] if back_cfg["strategy_auto_discover"] else [],
+        plugin_specs=back_cfg["strategy_plugins"],
+        on_plugin_error=back_cfg["strategy_plugin_on_error"],
+        include_defaults=False,
+    )
     strategy = None
-    if back_cfg["strategy_mode"] in {"topk", "longshort", "flex"}:
-        strategy = _build_strategy(back_cfg)
+    if back_cfg["strategy_mode"] != "sign":
+        strategy = _build_strategy(back_cfg, strategy_registry=strategy_registry)
 
     rows: list[dict[str, Any]] = []
     for fac in factors:
