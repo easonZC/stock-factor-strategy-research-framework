@@ -798,11 +798,7 @@ def _normalize_data_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str, An
     else:
         adapter = "raw_dir" if adapter_raw == "raw" else adapter_raw
         if adapter == "synthetic" and inferred_adapter:
-            LOGGER.info(
-                "data.path/source provided with adapter=synthetic; auto-switch to inferred adapter '%s'.",
-                inferred_adapter,
-            )
-            adapter = inferred_adapter
+            LOGGER.info("data.adapter 显式为 synthetic，忽略 data.path 的读取器推断。")
 
     builtin = {"synthetic", "sina", "stooq", "parquet", "csv", "raw_dir"}
     if adapter not in builtin and not (adapter_plugins or adapter_plugin_dirs):
