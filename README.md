@@ -1,51 +1,70 @@
-﻿# SSF v2: GitHub-Safe Stock Factor + Strategy Research Framework
+# SSF v2: Stock Factor + Strategy Research Framework
 
 ## English Overview
-SSF v2 is a reusable quant research framework designed for clean-machine reproducibility and GitHub safety. The codebase separates thin scripts from reusable package logic under `src/ssf`, removes proprietary local paths, avoids committing data artifacts, and provides a fully synthetic end-to-end workflow. The primary goal is report-grade factor research: multi-horizon forward returns, IC/RankIC and ICIR, IC decay, Newey–West significance testing, quantile portfolio analytics, turnover diagnostics, coverage/missing/outlier monitoring, factor stability analysis, neutralization A/B comparison, and multi-factor correlation heatmaps.
+SSF v2 is a GitHub-safe, reusable quant research framework focused on report-grade factor research. The architecture keeps CLI scripts thin and places reusable logic in `src/ssf`, with dataclass-based configuration, synthetic end-to-end reproducibility, and no proprietary local paths. The framework supports both cross-sectional (CS) and time-series (TS) factor scopes, runs a leakage-aware preprocessing and evaluation pipeline, and produces auditable HTML reports with figures and CSV tables. In addition to research, SSF v2 includes lightweight strategy backtesting, model-factor training hooks, and CI-ready tests so the project can be used as a real engineering baseline instead of a one-off notebook bundle.
 
 ## 中文说明
-SSF v2 是一个可复用、可迁移、可在干净环境直接运行的量化研究框架。核心目标是把“因子研究”升级到可交付报告级别：支持多周期收益预测、IC/RankIC 与 ICIR、IC 衰减、Newey–West 显著性检验、分位数组合收益与多空净值、换手分析、覆盖率/缺失率/异常值监控、稳定性分析、raw vs neutralized A/B 对比，以及多因子相关性热力图。脚本层仅做参数入口，核心逻辑全部放入 `src/ssf`，便于二次开发和团队协作。
+SSF v2 是一个面向实盘前研究流程的、可复用且 GitHub 安全的量化研究框架，核心目标是把因子研究提升到“可交付报告级别”。项目坚持“脚本薄、库层厚”的工程原则：命令行入口放在 `scripts/`，可复用逻辑统一放在 `src/ssf/`；配置以 dataclass 与 YAML 为核心，不依赖本地私有路径，不提交原始数据，支持在干净机器上通过 synthetic 数据完整跑通。框架提供 CS/TS 双因子研究路径、泄露防护的数据处理、可视化与统计检验、可选回测与模型因子扩展，并配套测试与 CI，使其适合作为团队化、长期维护的研究基建。
 
-## Layout
+## Core Capabilities
+- Factor interfaces: `Factor` base + built-in factors (`momentum_20`, `volatility_20`, `liquidity_shock`, `size`)
+- Strategy interfaces: `Strategy` base + `TopKLongStrategy`, `LongShortQuantileStrategy`, `FlexibleLongShortStrategy`
+- Backtesting: turnover-aware costs, equity curve, summary metrics
+- Factor research (primary):
+  - multi-horizon forward returns (`1,5,10,20`, configurable)
+  - daily IC + RankIC, rolling IC mean, ICIR
+  - IC decay across horizons
+  - Newey-West t-stat + p-value (IC / RankIC / long-short)
+  - quantile returns, quantile NAV, long-short, quantile turnover
+  - diagnostics: coverage, missing rate, outlier before/after, stability (lag1/lag5 + drift)
+  - neutralization A/B: raw vs neutralized
+  - multi-factor Pearson/Spearman correlation + heatmap
+- Config-driven one-click workflow:
+  - explicit scope split: `factor_scope=cs|ts`
+  - explicit eval axis: `eval_axis=cross_section|time`
+  - explicit standardization selection
+
+## Project Layout
 ```text
 src/ssf/
-  config.py
-  data/
-  workflows/
-  preprocess/
-  factors/
-  strategies/
-  backtest/
-  research/
-  plotting/
-  models/
-scripts/
-factor_library/
-model_library/
-examples/legacy/
-docs/
-tests/
+  backtest/      # Backtest engine and result objects
+  config.py      # Dataclass configs shared across modules
+  data/          # IO, synthetic data, Sina adapter, universe filters
+  factors/       # Factor base + built-in factors + model factor
+  models/        # Model registry + OOF training helpers
+  plotting/      # Unified chart style and plotting functions
+  preprocess/    # Winsorize/standardize/missing/neutralize transforms
+  research/      # CS/TS research pipelines, statistics, report renderer
+  strategies/    # Strategy base + implementations
+  workflows/     # Config runner and benchmark workflows
+scripts/         # Thin CLI entrypoints
+configs/         # Config templates (TS/CS demos)
+examples/legacy/ # Quarantined legacy/internship reference code only
+docs/            # Processing and methodology notes
+tests/           # Unit and smoke tests
 .github/workflows/ci.yml
 ```
 
-## Quickstart
+## Installation
 ```bash
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 ```
 
-### A) Synthetic factor research run
+If your environment exposes `python` directly, you can use `python` instead of `python3` in all commands below.
+
+## Required Commands
+
+### A) Synthetic report (must run end-to-end)
 ```bash
-python scripts/run_synthetic_factor_research.py --out outputs/factor_research_synthetic --run-strategy-check
+python scripts/demo_factor_research.py --out outputs/factor_report_demo
 ```
 
 ### B) Panel input
 ```bash
 python scripts/run_factor_research.py \
   --panel <path> \
-  --factors momentum_20,volatility_20,size \
+  --factors momentum_20,volatility_20,liquidity_shock \
   --horizons 1 5 10 20 \
-  --apply-universe-filter \
-  --min-history-days 20 \
   --out outputs/factor_report
 ```
 
@@ -55,63 +74,59 @@ python scripts/prepare_data.py --adapter sina --data-dir /stock_sina_update --ou
 python scripts/run_factor_research.py --panel data/panel.parquet --out outputs/factor_report_sina
 ```
 
-### D) Synthetic strategy run (factor + walk-forward)
-```bash
-python scripts/run_synthetic_strategy_backtest.py \
-  --mode both \
-  --strategy flex \
-  --model lgbm \
-  --enable-tradability-constraints \
-  --max-participation-rate 0.1 \
-  --benchmark-mode cross_sectional_mean \
-  --out outputs/strategy_backtest_synthetic
-```
+## Config-Driven One-Click Runs (TS/CS)
 
-### E) OOF model-factor research (neural network by default)
-```bash
-python scripts/run_model_factor_research.py \
-  --panel data/panel.parquet \
-  --model mlp \
-  --feature-cols momentum_20,volatility_20,liquidity_shock \
-  --factor-name model_factor_oof_mlp \
-  --out outputs/model_factor_research
-```
-
-### F) Model-factor benchmark (ML vs DL side-by-side)
-```bash
-python scripts/run_model_factor_benchmark.py \
-  --panel data/panel.parquet \
-  --models lgbm,mlp \
-  --feature-cols momentum_20,volatility_20,liquidity_shock,size \
-  --start-date 2018-01-01 \
-  --max-assets 300 \
-  --out outputs/model_factor_benchmark
-```
-
-This workflow now writes both `run_meta.json` and `run_manifest.json` for reproducibility.
-
-### G) Config-driven one-click run (TS / CS split)
+### CS example
 ```bash
 python scripts/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/cs_factor_demo
+```
+
+### TS example
+```bash
 python scripts/run_from_config.py --config configs/ts_factor_demo.yaml --out outputs/ts_factor_demo
 ```
 
-Config highlights:
-- `run.factor_scope`: `ts` or `cs`
-- `run.eval_axis`: `time` or `cross_section`
-- `run.standardization`: TS (`ts_rolling_zscore|zscore|none`), CS (`cs_zscore|cs_rank|none`)
-- `data.mode`: `single_asset|panel`
-- `data.adapter`: `synthetic|sina|parquet|csv`
-- `data.fields_required`: explicit input dependency declaration
+### Required config keys
+- `run.factor_scope`: `cs` or `ts`
+- `run.eval_axis`: `cross_section` or `time`
+- `run.standardization`: CS (`cs_zscore|cs_rank|none`), TS (`ts_rolling_zscore|zscore|none`)
 
-## Legacy quarantine
-Legacy internship-specific code/data references are moved under `examples/legacy/` for reference only.
-Legacy hand-written factor scripts are additionally indexed under `factor_library/manual_legacy_cn/`.
+## Typical Report Output Tree
+```text
+outputs/factor_report/
+  index.html
+  config.json
+  assets/
+    *_ic.png
+    *_quantile_nav.png
+    *_turnover.png
+    *_coverage.png
+    *_ic_decay.png
+    factor_corr_spearman.png
+  tables/
+    summary.csv
+    missing_rates.csv
+    *_ic_daily_h*.csv
+    *_ic_decay.csv
+    *_quantile_daily.csv
+    *_quantile_nav.csv
+    *_turnover.csv
+    *_coverage.csv
+    *_stability.csv
+    factor_corr_spearman.csv
+    factor_corr_pearson.csv
+```
 
-## Safety rules
+## Data Safety Policy
 - No raw data committed.
-- No hard-coded local paths/tokens.
-- Use CLI args + env vars + dataclass configs.
+- No hard-coded local paths or tokens.
+- Use CLI args, env vars, and config templates.
+- Legacy/internship code is isolated under `examples/legacy/`.
 
-## Notes
-See `docs/data_processing.md` for leakage-safe preprocessing rules and `docs/dl_feature_norm.md` for LayerNorm/BatchNorm concepts.
+## Testing and CI
+```bash
+ruff check src scripts tests
+pytest -q
+```
+
+CI (`.github/workflows/ci.yml`) runs lint + pytest + demo smoke artifact checks.

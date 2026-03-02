@@ -35,3 +35,4 @@ jobs:
           python scripts/demo_factor_research.py --out outputs/factor_report_ci --assets 10 --days 90
           test -f outputs/factor_report_ci/index.html
           test -f outputs/factor_report_ci/tables/summary.csv
+          test "$(ls outputs/factor_report_ci/assets/*.png | wc -l)" -ge 6

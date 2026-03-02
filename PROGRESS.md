@@ -53,6 +53,47 @@ For every complete run, append one new entry at the top of `Run History` with:
 
 ## Run History
 
+### Run 2026-03-01-004
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal: Start full SSF v2 refactor implementation for report-grade factor research and config-driven TS/CS workflows.
+- Changes:
+  - Created baseline backup tag: `legacy_before_refactor_20260301`.
+  - Created working branch: `refactor/ssf-v2`.
+  - Added `src/ssf/data/` package:
+    - panel IO + sanitization (`read_panel`, `write_panel`, `PanelSanitizationConfig`)
+    - synthetic generator (`generate_synthetic_panel`)
+    - Sina adapter with auto schema mapping + explicit warnings (`prepare_sina_panel`)
+    - universe filter (`apply_universe_filter`)
+  - Upgraded strategy implementations to match workflow config args and added `FlexibleLongShortStrategy`.
+  - Expanded model layer with reusable registry (`ridge/rf/mlp/lgbm`) and OOF training pipeline (`OOFSplitConfig`, `train_oof_model_factor`).
+  - Updated `.gitignore` to keep hard constraints while allowing tracked source module `src/ssf/data/`.
+  - Rewrote `README.md` into EN+ZH professional project guide with required commands and clear architecture.
+  - Added architecture doc: `docs/architecture.md`.
+  - Updated CI demo smoke check to enforce `>=6` plot artifacts.
+- Validation commands:
+  - `ruff check src scripts tests`
+  - `pytest -q`
+  - `python3 scripts/demo_factor_research.py --out outputs/factor_report_demo`
+  - `python3 scripts/run_factor_research.py --panel data/panel_demo.parquet --factors momentum_20,volatility_20,liquidity_shock --horizons 1 5 10 20 --out outputs/factor_report`
+  - `python3 scripts/prepare_data.py --adapter sina --data-dir /tmp/stock_sina_update --out data/panel_sina.parquet`
+  - `python3 scripts/run_factor_research.py --panel data/panel_sina.parquet --out outputs/factor_report_sina`
+  - `python3 scripts/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/cs_factor_demo`
+  - `python3 scripts/run_from_config.py --config configs/ts_factor_demo.yaml --out outputs/ts_factor_demo`
+- Validation summary:
+  - Lint passed.
+  - Tests passed: `6 passed`.
+  - Synthetic, panel-input, Sina-adapter, and config-driven TS/CS report runs all completed and generated expected artifacts (`index.html`, `tables/summary.csv`, multiple plots).
+- Git actions:
+  - Local milestone commits completed:
+    - `8f26bd2` (`chore(m1): add data module and harden gitignore boundaries`)
+    - `a471653` (`feat(m2): align strategy interfaces and stabilize report entrypoint`)
+    - `bee6ae1` (`feat(m3): add reusable model registry and oof model-factor training`)
+    - `bfb8177` (`docs(m4): clarify ts/cs preprocessing defaults and leakage notes`)
+  - Pending in this run: final `M5` docs/CI commit + push branch + PR update.
+- Next run direction:
+  - Finalize docs/CI polish commit (`M5`), push `refactor/ssf-v2`, and open/update PR against `main`.
+  - Add deeper regression tests for report-table field completeness and Newey-West edge cases.
+
 ### Run 2026-03-01-003
 - Time: 2026-03-01 (America/Los_Angeles)
 - Goal: Verify `gh` availability/auth and confirm ability to create PR directly from CLI.

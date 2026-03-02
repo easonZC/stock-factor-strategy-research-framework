@@ -1,18 +1,33 @@
-﻿# Legacy Backup + Git Commands
+# Backup and Git Workflow
 
-This workspace was not a git repository at refactor start, so tag/branch could not be created directly.
+This repository now uses a branch + PR workflow for all Codex runs.
 
-Use the following commands after `git init`:
+## Baseline backup before refactor
+A legacy baseline tag is created before the major refactor:
 
 ```bash
-git init
-git add .
-git commit -m "chore: baseline before ssf-v2 refactor"
-
 DATE=$(date +%Y%m%d)
 git tag legacy_before_refactor_${DATE}
-git checkout -b refactor/ssf-v2
+git switch -c refactor/ssf-v2
 ```
 
-A physical backup snapshot was created at:
-- `backups/github_ready_backup_20260228_222225.zip`
+In this workspace, the tag used is:
+- `legacy_before_refactor_20260301`
+
+And the main refactor branch is:
+- `refactor/ssf-v2`
+
+## Recommended per-run flow
+```bash
+git switch main
+git fetch origin
+git pull --rebase origin main
+git switch -c <type>/<scope>-<yyyymmdd>
+# implement + validate
+git add <files>
+git commit -m "<type>(<scope>): <summary>"
+git push -u origin <branch>
+# create PR: <branch> -> main
+```
+
+Direct pushes to `main` are blocked locally by `.githooks/pre-push`.
