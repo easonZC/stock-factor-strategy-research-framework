@@ -26,6 +26,7 @@ from factorlab.data import (
     apply_universe_filter,
     generate_synthetic_panel,
     prepare_sina_panel,
+    prepare_stooq_panel,
     read_panel,
 )
 from factorlab.factors import (
@@ -173,7 +174,7 @@ def _normalize_factor_scope(cfg: dict[str, Any]) -> dict[str, Any]:
 def _normalize_data_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str, Any]:
     data_cfg = _as_dict(cfg.get("data"))
     adapter = str(data_cfg.get("adapter", "synthetic")).strip().lower()
-    if adapter not in {"synthetic", "sina", "parquet", "csv"}:
+    if adapter not in {"synthetic", "sina", "stooq", "parquet", "csv"}:
         LOGGER.warning("Invalid data.adapter='%s'. Use synthetic.", adapter)
         adapter = "synthetic"
 
@@ -193,6 +194,10 @@ def _normalize_data_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str, An
         "adapter": adapter,
         "path": data_cfg.get("path"),
         "data_dir": data_cfg.get("data_dir"),
+        "symbols": [str(x).strip() for x in _as_list(data_cfg.get("symbols")) if str(x).strip()],
+        "start_date": data_cfg.get("start_date"),
+        "end_date": data_cfg.get("end_date"),
+        "request_timeout_sec": max(3, _to_int(data_cfg.get("request_timeout_sec"), 20)),
         "asset": data_cfg.get("asset"),
         "sanitize": _to_bool(data_cfg.get("sanitize"), True),
         "duplicate_policy": str(data_cfg.get("duplicate_policy", "last")).strip().lower(),
@@ -530,14 +535,16 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     data_cfg = _as_dict(cfg.get("data"))
     adapter = str(data_cfg.get("adapter", "")).strip().lower()
     mode = str(data_cfg.get("mode", "")).strip().lower()
-    if adapter not in {"synthetic", "sina", "parquet", "csv"}:
-        errors.append("data.adapter: must be one of ['synthetic', 'sina', 'parquet', 'csv'].")
+    if adapter not in {"synthetic", "sina", "stooq", "parquet", "csv"}:
+        errors.append("data.adapter: must be one of ['synthetic', 'sina', 'stooq', 'parquet', 'csv'].")
     if mode not in {"single_asset", "panel"}:
         errors.append("data.mode: must be one of ['single_asset', 'panel'].")
     if adapter in {"parquet", "csv"} and not data_cfg.get("path"):
         errors.append("data.path: required when data.adapter is parquet/csv.")
     if adapter == "sina" and not data_cfg.get("data_dir"):
         errors.append("data.data_dir: required when data.adapter is sina.")
+    if adapter == "stooq" and not _as_list(data_cfg.get("symbols")):
+        errors.append("data.symbols: required when data.adapter is stooq.")
 
     factor_cfg = _as_dict(cfg.get("factor"))
     factor_names = _as_list(factor_cfg.get("names"))
@@ -689,6 +696,23 @@ def _load_data(data_cfg: dict[str, Any], scope_cfg: dict[str, Any]) -> tuple[pd.
         if not data_dir:
             raise ValueError("data.data_dir is required when data.adapter=sina")
         panel = prepare_sina_panel(AdapterConfig(data_dir=str(data_dir)))
+        return panel, loader_report
+
+    if adapter == "stooq":
+        symbols = [str(x).strip() for x in data_cfg.get("symbols", []) if str(x).strip()]
+        if not symbols:
+            raise ValueError("data.symbols is required when data.adapter=stooq")
+        panel = prepare_stooq_panel(
+            AdapterConfig(
+                symbols=tuple(symbols),
+                start_date=str(data_cfg.get("start_date")) if data_cfg.get("start_date") else None,
+                end_date=str(data_cfg.get("end_date")) if data_cfg.get("end_date") else None,
+                request_timeout_sec=int(data_cfg.get("request_timeout_sec", 20)),
+            )
+        )
+        loader_report["symbols"] = symbols
+        loader_report["start_date"] = data_cfg.get("start_date")
+        loader_report["end_date"] = data_cfg.get("end_date")
         return panel, loader_report
 
     path = data_cfg.get("path")

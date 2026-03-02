@@ -58,6 +58,12 @@ def _base_data(scope: str, adapter: str) -> dict[str, Any]:
             "date",
             "close",
         ]
+    elif adapter == "stooq":
+        out["symbols"] = ["aapl", "msft", "googl"] if is_cs else ["aapl"]
+        out["start_date"] = "2020-01-01"
+        out["end_date"] = None
+        out["request_timeout_sec"] = 20
+        out["fields_required"] = ["date", "asset", "close", "volume"] if is_cs else ["date", "close"]
     else:  # pragma: no cover
         raise ValueError(f"Unsupported adapter: {adapter}")
 
@@ -99,8 +105,8 @@ def build_template(scope: str, adapter: str, factors: list[str]) -> dict[str, An
     adapter = adapter.strip().lower()
     if scope not in {"cs", "ts"}:
         raise ValueError("scope must be one of: cs, ts")
-    if adapter not in {"synthetic", "parquet", "csv", "sina"}:
-        raise ValueError("adapter must be one of: synthetic, parquet, csv, sina")
+    if adapter not in {"synthetic", "parquet", "csv", "sina", "stooq"}:
+        raise ValueError("adapter must be one of: synthetic, parquet, csv, sina, stooq")
     if scope == "ts" and adapter == "sina":
         # Sina adapter is panel-oriented; TS users can still reduce to single-asset at runtime.
         pass
@@ -157,7 +163,7 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.add_argument("--scope", required=True, choices=["cs", "ts"], help="Factor scope")
-    parser.add_argument("--adapter", default="synthetic", choices=["synthetic", "parquet", "csv", "sina"])
+    parser.add_argument("--adapter", default="synthetic", choices=["synthetic", "parquet", "csv", "sina", "stooq"])
     parser.add_argument(
         "--factors",
         default="",

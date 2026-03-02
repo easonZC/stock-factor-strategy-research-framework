@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import re
+from urllib.parse import urlencode
+from urllib.request import urlopen
 from pathlib import Path
 
 import numpy as np
@@ -147,6 +150,110 @@ def prepare_sina_panel(config: AdapterConfig) -> pd.DataFrame:
         "Sina adapter completed: files_total=%s files_used=%s files_skipped=%s rows=%s assets=%s",
         len(csv_files),
         len(csv_files) - skipped,
+        skipped,
+        len(panel),
+        panel["asset"].nunique(),
+    )
+    return panel
+
+
+def _normalize_stooq_symbol(symbol: str) -> str:
+    text = str(symbol).strip().lower()
+    if not text:
+        return text
+    if "." in text:
+        return text
+    return f"{text}.us"
+
+
+def _fetch_stooq_csv(symbol: str, timeout_sec: int) -> pd.DataFrame:
+    query = urlencode({"s": _normalize_stooq_symbol(symbol), "i": "d"})
+    url = f"https://stooq.com/q/d/l/?{query}"
+    with urlopen(url, timeout=int(timeout_sec)) as resp:  # nosec B310 - fixed host + encoded query only
+        payload = resp.read().decode("utf-8", errors="replace")
+    return pd.read_csv(io.StringIO(payload))
+
+
+def prepare_stooq_panel(config: AdapterConfig) -> pd.DataFrame:
+    """Download daily OHLCV from public Stooq endpoint into canonical panel schema."""
+    symbols = [str(s).strip() for s in config.symbols if str(s).strip()]
+    if not symbols:
+        raise ValueError("Stooq adapter requires non-empty symbols list.")
+
+    start_ts = pd.to_datetime(config.start_date, errors="coerce") if config.start_date else None
+    end_ts = pd.to_datetime(config.end_date, errors="coerce") if config.end_date else None
+    if start_ts is not None and pd.isna(start_ts):
+        raise ValueError(f"Invalid start_date: {config.start_date}")
+    if end_ts is not None and pd.isna(end_ts):
+        raise ValueError(f"Invalid end_date: {config.end_date}")
+
+    parts: list[pd.DataFrame] = []
+    skipped = 0
+    for sym in symbols:
+        try:
+            raw = _fetch_stooq_csv(sym, timeout_sec=config.request_timeout_sec)
+        except Exception as exc:
+            LOGGER.warning("Skip symbol %s: failed to fetch stooq csv (%s)", sym, exc)
+            skipped += 1
+            continue
+        if raw.empty:
+            LOGGER.warning("Skip symbol %s: empty response", sym)
+            skipped += 1
+            continue
+
+        mapping = _auto_map_columns(list(raw.columns))
+        required = ["date", "close"]
+        missing_required = [c for c in required if c not in mapping]
+        if missing_required:
+            LOGGER.warning(
+                "Skip symbol %s: required columns missing after auto-mapping: %s. raw columns=%s",
+                sym,
+                missing_required,
+                list(raw.columns),
+            )
+            skipped += 1
+            continue
+
+        out = pd.DataFrame(index=raw.index)
+        out["date"] = pd.to_datetime(raw[mapping["date"]], errors="coerce")
+        out["asset"] = str(sym).upper()
+        for col in ["open", "high", "low", "close", "volume", "mkt_cap"]:
+            if col in mapping:
+                out[col] = pd.to_numeric(raw[mapping[col]], errors="coerce")
+            else:
+                out[col] = np.nan
+        out["industry"] = "Unknown"
+
+        out = out.dropna(subset=["date", "close"]).copy()
+        if start_ts is not None:
+            out = out[out["date"] >= pd.Timestamp(start_ts)].copy()
+        if end_ts is not None:
+            out = out[out["date"] <= pd.Timestamp(end_ts)].copy()
+
+        if len(out) < int(config.min_rows_per_asset):
+            LOGGER.warning(
+                "Skip symbol %s: rows after clean (%s) < min_rows_per_asset (%s)",
+                sym,
+                len(out),
+                config.min_rows_per_asset,
+            )
+            skipped += 1
+            continue
+        parts.append(out)
+
+    if not parts:
+        raise ValueError(
+            "Stooq adapter produced no valid panel rows. "
+            "Check symbols/date range and warnings for details."
+        )
+
+    panel = pd.concat(parts, ignore_index=True)
+    panel = panel.drop_duplicates(subset=["date", "asset"], keep="last")
+    panel = panel.sort_values(["date", "asset"]).reset_index(drop=True)
+    LOGGER.info(
+        "Stooq adapter completed: symbols_total=%s symbols_used=%s symbols_skipped=%s rows=%s assets=%s",
+        len(symbols),
+        len(symbols) - skipped,
         skipped,
         len(panel),
         panel["asset"].nunique(),

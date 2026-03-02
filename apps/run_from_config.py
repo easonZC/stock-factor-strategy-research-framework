@@ -13,7 +13,7 @@ if str(CORE_PATH) not in sys.path:
 
 import yaml
 
-from factorlab.utils import get_logger  # noqa: E402
+from factorlab.utils import configure_logging, get_logger  # noqa: E402
 from factorlab.workflows import compose_run_config, run_from_config  # noqa: E402
 
 LOGGER = get_logger("factorlab.run_from_config")
@@ -53,11 +53,22 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip strict pre-validation of config schema before runtime.",
     )
+    parser.add_argument(
+        "--log-level",
+        default=None,
+        help="Logging level (DEBUG/INFO/WARNING/ERROR). Also supports env FACTORLAB_LOG_LEVEL.",
+    )
+    parser.add_argument(
+        "--log-file",
+        default=None,
+        help="Optional log file path for this run.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    configure_logging(level=args.log_level, log_file=args.log_file, force=True)
     effective_cfg = compose_run_config(config_paths=args.config, overrides=args.overrides)
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)

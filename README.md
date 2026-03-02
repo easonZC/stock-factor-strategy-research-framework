@@ -76,6 +76,12 @@ python apps/prepare_data.py --adapter sina --data-dir /stock_sina_update --out d
 python apps/run_factor_research.py --panel data/panel.parquet --out outputs/research/factor/sina_report
 ```
 
+### D) Public adapter (Stooq, no proprietary data)
+```bash
+python apps/prepare_data.py --adapter stooq --symbols aapl,msft,googl,amzn --start-date 2022-01-01 --out data/panel.parquet
+python apps/run_factor_research.py --panel data/panel.parquet --out outputs/research/factor/stooq_report
+```
+
 ## Config-Driven One-Click Runs (TS/CS)
 
 ### CS example
@@ -86,6 +92,11 @@ python apps/run_from_config.py --config configs/cs_factor_demo.yaml --out output
 ### TS example
 ```bash
 python apps/run_from_config.py --config configs/ts_factor_demo.yaml --out outputs/research/factor/config_ts
+```
+
+### CS public-data example (Stooq)
+```bash
+python apps/run_from_config.py --config configs/cs_stooq_demo.yaml --out outputs/research/factor/config_stooq
 ```
 
 ### Multi-config merge + temporary overrides
@@ -133,8 +144,10 @@ python apps/generate_run_config.py --scope ts --adapter parquet --set data.path=
 - `backtest.strategy.mode`: built-in `sign|topk|longshort|flex|meanvar` or plugin-defined mode
 - `backtest` risk controls: `max_turnover|max_abs_weight|max_gross_exposure|max_net_exposure`
 - `backtest.benchmark_mode`: `none|cross_sectional_mean|panel_column`
+- `data.adapter`: supports `synthetic|parquet|csv|sina|stooq`
 - CLI `run_from_config` supports repeated `--config` deep-merge and repeated `--set key.path=value` overrides.
 - CLI `run_from_config` pre-validates config schema by default; use `--skip-schema-validation` to bypass.
+- CLI logging: major entrypoints support `--log-level` and `--log-file`; env `FACTORLAB_LOG_LEVEL` is also supported.
 
 ### Plugin Factor Example
 ```yaml

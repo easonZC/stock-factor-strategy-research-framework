@@ -105,8 +105,12 @@ class SyntheticConfig:
 
 @dataclass(slots=True)
 class AdapterConfig:
-    """Sina CSV adapter settings."""
+    """Adapter settings for external data ingestion."""
 
-    data_dir: str
+    data_dir: str = ""
     required_cols: tuple[str, ...] = ("date", "close")
     min_rows_per_asset: int = 30
+    symbols: tuple[str, ...] = ()
+    start_date: str | None = None
+    end_date: str | None = None
+    request_timeout_sec: int = 20

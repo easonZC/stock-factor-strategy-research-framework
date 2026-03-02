@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import parse_qs, urlparse
 from pathlib import Path
 
 import pandas as pd
@@ -260,3 +261,72 @@ def test_run_from_config_with_factor_combinations(tmp_path) -> None:
     meta = json.loads(result.run_meta_json.read_text(encoding="utf-8"))
     assert "combo_mom_vol" in meta["factors"]["computed_combination_factors"]
     assert "combo_mom_vol" in meta["factors"]["effective"]
+
+
+def test_run_from_config_stooq_adapter_smoke(tmp_path, monkeypatch) -> None:
+    def _make_payload(symbol_raw: str) -> str:
+        symbol = str(symbol_raw).split(".")[0].upper()
+        base = {"AAPL": 100.0, "MSFT": 200.0, "GOOGL": 150.0, "AMZN": 120.0}.get(symbol, 90.0)
+        dates = pd.date_range("2023-01-02", periods=220, freq="B")
+        close = base + pd.Series(range(len(dates)), dtype=float) * 0.05
+        df = pd.DataFrame(
+            {
+                "Date": dates.strftime("%Y-%m-%d"),
+                "Open": close - 0.1,
+                "High": close + 0.2,
+                "Low": close - 0.2,
+                "Close": close,
+                "Volume": 1000000,
+            }
+        )
+        return df.to_csv(index=False)
+
+    class _Resp:
+        def __init__(self, payload: str) -> None:
+            self._payload = payload.encode("utf-8")
+
+        def read(self) -> bytes:
+            return self._payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def _fake_urlopen(url: str, timeout: int):  # noqa: ANN001
+        assert "stooq.com" in url
+        assert timeout == 20
+        q = parse_qs(urlparse(url).query)
+        symbol = q.get("s", ["aapl.us"])[0]
+        return _Resp(_make_payload(symbol))
+
+    monkeypatch.setattr("factorlab.data.adapters.urlopen", _fake_urlopen)
+
+    cfg = {
+        "run": {"factor_scope": "cs", "eval_axis": "cross_section", "standardization": "cs_rank"},
+        "data": {
+            "mode": "panel",
+            "adapter": "stooq",
+            "symbols": ["aapl", "msft", "googl", "amzn"],
+            "start_date": "2023-01-01",
+            "end_date": "2023-12-31",
+            "request_timeout_sec": 20,
+            "fields_required": ["date", "asset", "close", "volume"],
+        },
+        "factor": {"names": ["momentum_20", "volatility_20"]},
+        "research": {
+            "horizons": [1, 5],
+            "quantiles": 3,
+            "ic_rolling_window": 20,
+            "preprocess_steps": ["standardize"],
+            "neutralize": {"enabled": False},
+        },
+        "backtest": {"enabled": False},
+    }
+    cfg_path = tmp_path / "stooq.yaml"
+    _write_yaml(cfg_path, cfg)
+    out_dir = tmp_path / "out_stooq"
+    result = run_from_config(config=cfg_path, out_dir=out_dir)
+    assert result.index_html.exists()
+    assert result.summary_csv.exists()

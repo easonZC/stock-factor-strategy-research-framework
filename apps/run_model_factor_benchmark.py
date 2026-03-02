@@ -12,7 +12,7 @@ if str(CORE_PATH) not in sys.path:
     sys.path.insert(0, str(CORE_PATH))
 
 from factorlab.config import UniverseFilterConfig  # noqa: E402
-from factorlab.utils import get_logger  # noqa: E402
+from factorlab.utils import configure_logging, get_logger  # noqa: E402
 from factorlab.workflows import ModelFactorBenchmarkConfig, run_model_factor_benchmark  # noqa: E402
 
 LOGGER = get_logger("factorlab.run_model_factor_benchmark")
@@ -90,11 +90,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-history-days", type=int, default=1)
     parser.add_argument("--min-median-dollar-volume", type=float, default=0.0)
     parser.add_argument("--liquidity-lookback", type=int, default=20)
+    parser.add_argument(
+        "--log-level",
+        default=None,
+        help="Logging level (DEBUG/INFO/WARNING/ERROR). Also supports env FACTORLAB_LOG_LEVEL.",
+    )
+    parser.add_argument(
+        "--log-file",
+        default=None,
+        help="Optional log file path for this run.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    configure_logging(level=args.log_level, log_file=args.log_file, force=True)
 
     workflow_cfg = ModelFactorBenchmarkConfig(
         models=args.models,

@@ -81,3 +81,14 @@ def test_validate_schema_custom_strategy_mode_requires_plugins() -> None:
     }
     with pytest.raises(ValueError, match="backtest.strategy.mode"):
         validate_run_config_schema(cfg, strict=True)
+
+
+def test_validate_schema_stooq_requires_symbols() -> None:
+    cfg = _valid_cfg()
+    cfg["data"]["adapter"] = "stooq"
+    cfg["data"].pop("synthetic", None)
+    cfg["data"].pop("path", None)
+    cfg["data"].pop("data_dir", None)
+    cfg["data"]["symbols"] = []
+    with pytest.raises(ValueError, match="data.symbols"):
+        validate_run_config_schema(cfg, strict=True)

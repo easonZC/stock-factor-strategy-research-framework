@@ -1,6 +1,6 @@
 """Data ingestion, synthetic generation, and universe filtering utilities."""
 
-from .adapters import prepare_sina_panel
+from .adapters import prepare_sina_panel, prepare_stooq_panel
 from .io import (
     PanelSanitizationConfig,
     PanelSanitizationReport,
@@ -17,6 +17,7 @@ __all__ = [
     "apply_universe_filter",
     "generate_synthetic_panel",
     "prepare_sina_panel",
+    "prepare_stooq_panel",
     "read_panel",
     "write_panel",
 ]
