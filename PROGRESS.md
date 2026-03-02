@@ -94,8 +94,9 @@ For every complete run, append one new entry at the top of `Run History` with:
   - Plugin strategy run (custom `mode`) succeeded end-to-end with report + backtest outputs.
 - Git actions:
   - Working branch: `feat/plugin-schema-validation-20260301` (continued stacked feature set).
-  - Local commit: pending
-  - Push: pending
+  - Local commit succeeded: `b02ed11` (`feat(strategies): add plugin registry and custom mode support`).
+  - Push succeeded: `git push origin feat/plugin-schema-validation-20260301`.
+  - Existing PR updated: `https://github.com/easonZC/stock-factor-strategy-research-framework/pull/5`
 - Next run direction:
   - Add strategy expression/recipe layer and reusable optimizer interfaces.
   - Add explicit strategy plugin docs page with minimal templates and troubleshooting.
