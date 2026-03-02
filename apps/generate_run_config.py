@@ -1,4 +1,4 @@
-"""Generate run-config templates for TS/CS workflows."""
+"""生成 TS/CS 工作流运行配置模板。"""
 
 from __future__ import annotations
 
@@ -116,7 +116,7 @@ def _base_research(scope: str) -> dict[str, Any]:
 
 
 def build_template(scope: str, adapter: str, factors: list[str]) -> dict[str, Any]:
-    """Build a default YAML template payload."""
+    """构建默认 YAML 模板内容。"""
     scope = scope.strip().lower()
     adapter = adapter.strip().lower()
     if scope not in {"cs", "ts"}:
@@ -124,7 +124,7 @@ def build_template(scope: str, adapter: str, factors: list[str]) -> dict[str, An
     if adapter not in {"synthetic", "parquet", "csv", "sina", "stooq"}:
         raise ValueError("adapter must be one of: synthetic, parquet, csv, sina, stooq")
     if scope == "ts" and adapter == "sina":
-        # Sina adapter is panel-oriented; TS users can still reduce to single-asset at runtime.
+        # Sina 适配器天然输出面板，TS 场景可在运行时再筛到单资产。
         pass
 
     factor_list = factors if factors else (["momentum_20", "volatility_20"] if scope == "ts" else [

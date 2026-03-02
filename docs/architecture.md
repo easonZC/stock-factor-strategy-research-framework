@@ -10,6 +10,7 @@ FactorLab v2 separates orchestration from reusable research logic:
 - `factorlab.data.read_panel(...)` for parquet/csv
 - `factorlab.data.prepare_sina_panel(...)` for Sina folder
 - `factorlab.data.generate_synthetic_panel(...)` for demos/tests
+- optional adapter config hook: `validate_<adapter>_config(...)`
 
 2. Compute factors:
 - `factorlab.factors.apply_factors(...)`
@@ -30,6 +31,7 @@ FactorLab v2 separates orchestration from reusable research logic:
   - `tables/factors/<factor>/<variant>/*.csv`
   - global summary/diagnostics at `assets/*` and `tables/*`
   - `config.json`
+  - `tables/data/adapter_quality_audit.csv` (adapter quality audit)
 
 5. Optional backtest:
 - Strategy weights from `factorlab.strategies.*`

@@ -1,4 +1,4 @@
-﻿"""Prepare canonical panel data from external sources (adapter-driven)."""
+﻿"""通过适配器准备标准化面板数据。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ if str(CORE_PATH) not in sys.path:
     sys.path.insert(0, str(CORE_PATH))
 
 from factorlab.config import AdapterConfig
-from factorlab.data import build_data_adapter_registry, write_panel
+from factorlab.data import build_data_adapter_registry, build_data_adapter_validator_registry, write_panel
 from factorlab.utils import configure_logging, get_logger
 
 LOGGER = get_logger("factorlab.prepare_data")
@@ -77,6 +77,12 @@ def main() -> None:
         on_plugin_error=args.adapter_plugin_on_error,
         include_defaults=True,
     )
+    validator_registry = build_data_adapter_validator_registry(
+        plugin_dirs=args.adapter_plugin_dirs,
+        plugin_specs=args.adapter_plugins,
+        on_plugin_error=args.adapter_plugin_on_error,
+        include_defaults=True,
+    )
     adapter_name = str(args.adapter).strip().lower()
     if adapter_name not in registry:
         raise KeyError(f"Unknown adapter '{adapter_name}'. Available adapters: {sorted(registry.keys())}")
@@ -95,6 +101,9 @@ def main() -> None:
         min_rows_per_asset=int(args.min_rows_per_asset),
         request_timeout_sec=int(args.request_timeout_sec),
     )
+    validator = validator_registry.get(adapter_name)
+    if validator is not None:
+        validator(adapter_cfg)
     panel = registry[adapter_name](adapter_cfg)
     out = write_panel(panel, args.out)
     LOGGER.info("Prepared panel saved to %s (rows=%s assets=%s)", out, len(panel), panel["asset"].nunique())

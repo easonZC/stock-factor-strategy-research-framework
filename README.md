@@ -226,6 +226,9 @@ Plugin module can expose:
 - `DATA_ADAPTER_REGISTRY` dict
 - `get_data_adapter_registry()`
 - or `prepare_<name>_panel(config)` function
+- `DATA_ADAPTER_VALIDATORS` dict
+- `get_data_adapter_validators()`
+- or `validate_<name>_config(config)` function
 
 Reference templates:
 - `examples/plugins/data_adapters/README.md`
@@ -234,6 +237,8 @@ Reference templates:
 `run_meta.json` now includes structured adapter load profile:
 - `data.load_report.adapter_load_seconds`
 - `data.load_report.panel_profile` (rows/assets/date-range/columns/source)
+- `data.adapter_validation_report` (pre-load config validation hook report)
+- `data.adapter_audit_tables` (quality audit CSV pointers)
 
 ### Custom Transform Plugin Example
 ```yaml
@@ -290,6 +295,11 @@ outputs/research/factor/panel_report/
     missing_rates.csv
     factor_corr_spearman.csv
     factor_corr_pearson.csv
+    data/
+      adapter_quality_audit.csv
+      field_missing_rates.csv
+      asset_row_counts.csv
+      date_coverage.csv
     factors/
       <factor_name>/
         raw/

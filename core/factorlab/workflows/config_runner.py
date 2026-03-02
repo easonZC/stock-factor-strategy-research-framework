@@ -1,4 +1,4 @@
-"""Config-driven one-click runner for TS/CS factor research workflows."""
+"""配置驱动的一键式 TS/CS 因子研究工作流。"""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from factorlab.data import (
     PanelSanitizationConfig,
     apply_universe_filter,
     build_data_adapter_registry,
+    build_data_adapter_validator_registry,
     generate_synthetic_panel,
     read_panel,
 )
@@ -67,7 +68,7 @@ FACTOR_REQUIRED_COLUMNS: dict[str, set[str]] = {
 
 @dataclass(slots=True)
 class ConfigRunResult:
-    """Result pointers for config-driven run."""
+    """配置运行结果文件指针。"""
 
     out_dir: Path
     index_html: Path
@@ -499,7 +500,7 @@ def _normalize_universe_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_run_config(path: str | Path) -> dict[str, Any]:
-    """Load yaml run configuration from file path."""
+    """从文件加载 YAML 运行配置。"""
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"Config file not found: {p}")
@@ -510,7 +511,7 @@ def load_run_config(path: str | Path) -> dict[str, Any]:
 
 
 def deep_merge_dict(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
-    """Recursively merge dict values from overlay into base and return a new dict."""
+    """递归合并字典并返回新对象。"""
     out = dict(base)
     for key, val in overlay.items():
         cur = out.get(key)
@@ -522,7 +523,7 @@ def deep_merge_dict(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, 
 
 
 def apply_config_override(cfg: dict[str, Any], override: str) -> dict[str, Any]:
-    """Apply one dotted-path override in form `a.b.c=value` and return a new dict."""
+    """应用单条 `a.b.c=value` 覆盖项并返回新配置。"""
     text = str(override).strip()
     if "=" not in text:
         raise ValueError(f"Invalid override '{override}'. Expected format: key.path=value")
@@ -551,13 +552,7 @@ def compose_run_config(
     config_paths: list[str | Path],
     overrides: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Compose effective run config from multiple yaml files and dotted overrides.
-
-    Merge order:
-    - Start from first config file.
-    - Deep-merge subsequent files from left to right.
-    - Apply overrides in provided order.
-    """
+    """由多份 YAML 与覆盖项合成有效运行配置。"""
     if not config_paths:
         raise ValueError("At least one config path is required.")
 
@@ -643,7 +638,7 @@ def _validate_data_adapter_fragment(
 
 
 def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list[str]:
-    """Pre-validate run config schema and return non-blocking warnings."""
+    """运行前进行配置结构校验，并返回非阻断告警。"""
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -850,10 +845,249 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     return warnings
 
 
+def _build_adapter_config(data_cfg: dict[str, Any]) -> AdapterConfig:
+    return AdapterConfig(
+        data_dir=str(data_cfg.get("data_dir") or ""),
+        required_cols=tuple(str(c).strip() for c in data_cfg.get("fields_required", []) if str(c).strip())
+        or ("date", "close"),
+        min_rows_per_asset=int(data_cfg.get("min_rows_per_asset", 30)),
+        symbols=tuple(str(x).strip() for x in data_cfg.get("symbols", []) if str(x).strip()),
+        start_date=str(data_cfg.get("start_date")) if data_cfg.get("start_date") else None,
+        end_date=str(data_cfg.get("end_date")) if data_cfg.get("end_date") else None,
+        request_timeout_sec=int(data_cfg.get("request_timeout_sec", 20)),
+    )
+
+
+def _normalize_adapter_validation_warnings(result: Any) -> list[str]:
+    if result is None:
+        return []
+    if isinstance(result, bool):
+        if result:
+            return []
+        raise ValueError("Adapter config validator returned False.")
+    if isinstance(result, str):
+        text = result.strip()
+        return [text] if text else []
+    if isinstance(result, dict):
+        raw = result.get("warnings")
+        if raw is None:
+            return []
+        return [str(x).strip() for x in _as_list(raw) if str(x).strip()]
+    if isinstance(result, (list, tuple, set)):
+        return [str(x).strip() for x in result if str(x).strip()]
+    raise TypeError(f"Unsupported validator return type: {type(result)}")
+
+
+def _validate_adapter_config(
+    adapter: str,
+    adapter_cfg: AdapterConfig,
+    validator_registry: dict[str, Any],
+) -> dict[str, Any]:
+    report: dict[str, Any] = {
+        "adapter": adapter,
+        "validated": False,
+        "validator_found": False,
+        "validation_seconds": 0.0,
+        "warnings": [],
+    }
+    validator = validator_registry.get(adapter)
+    if validator is None:
+        return report
+
+    report["validator_found"] = True
+    t0 = time.perf_counter()
+    result = validator(adapter_cfg)
+    report["validation_seconds"] = float(time.perf_counter() - t0)
+    report["warnings"] = _normalize_adapter_validation_warnings(result)
+    report["validated"] = True
+    return report
+
+
+def _write_adapter_quality_audit_tables(
+    panel: pd.DataFrame,
+    data_cfg: dict[str, Any],
+    load_report: dict[str, Any],
+    out_dir: Path,
+) -> dict[str, str]:
+    table_dir = out_dir / "tables" / "data"
+    table_dir.mkdir(parents=True, exist_ok=True)
+
+    df = panel.copy()
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+
+    rows = int(len(df))
+    assets = int(df["asset"].nunique()) if ("asset" in df.columns and rows > 0) else 0
+    dates = int(df["date"].nunique()) if ("date" in df.columns and rows > 0) else 0
+    min_rows_threshold = int(data_cfg.get("min_rows_per_asset", 0))
+
+    summary_rows: list[dict[str, Any]] = [
+        {"category": "source", "metric": "adapter", "value": str(data_cfg.get("adapter", "")), "note": ""},
+        {"category": "shape", "metric": "rows", "value": rows, "note": ""},
+        {"category": "shape", "metric": "assets", "value": assets, "note": ""},
+        {"category": "shape", "metric": "dates", "value": dates, "note": ""},
+        {
+            "category": "threshold",
+            "metric": "min_rows_per_asset",
+            "value": min_rows_threshold,
+            "note": "用于资产样本量达标判定",
+        },
+        {
+            "category": "timing",
+            "metric": "adapter_load_seconds",
+            "value": float(load_report.get("adapter_load_seconds", 0.0)),
+            "note": "",
+        },
+    ]
+
+    field_rows: list[dict[str, Any]] = []
+    for col in [str(x).strip() for x in data_cfg.get("fields_required", []) if str(x).strip()]:
+        if col not in df.columns:
+            missing_rate = 1.0
+            coverage_rate = 0.0
+        else:
+            missing_rate = float(df[col].isna().mean()) if rows > 0 else 1.0
+            coverage_rate = float(1.0 - missing_rate)
+        field_rows.append(
+            {
+                "field": col,
+                "missing_rate": missing_rate,
+                "coverage_rate": coverage_rate,
+            }
+        )
+        summary_rows.append(
+            {
+                "category": "missing",
+                "metric": f"missing_rate__{col}",
+                "value": missing_rate,
+                "note": "",
+            }
+        )
+
+    asset_rows = pd.DataFrame(columns=["asset", "rows", "meets_min_rows"])
+    if "asset" in df.columns and rows > 0:
+        asset_counts = (
+            df.groupby("asset", as_index=False)
+            .size()
+            .rename(columns={"size": "rows"})
+            .sort_values("rows", ascending=False)
+            .reset_index(drop=True)
+        )
+        asset_counts["meets_min_rows"] = (
+            asset_counts["rows"] >= min_rows_threshold if min_rows_threshold > 0 else True
+        )
+        asset_rows = asset_counts
+
+        summary_rows.extend(
+            [
+                {
+                    "category": "asset_rows",
+                    "metric": "asset_rows_min",
+                    "value": int(asset_counts["rows"].min()),
+                    "note": "",
+                },
+                {
+                    "category": "asset_rows",
+                    "metric": "asset_rows_median",
+                    "value": float(asset_counts["rows"].median()),
+                    "note": "",
+                },
+                {
+                    "category": "asset_rows",
+                    "metric": "asset_rows_max",
+                    "value": int(asset_counts["rows"].max()),
+                    "note": "",
+                },
+                {
+                    "category": "threshold",
+                    "metric": "assets_meet_min_rows",
+                    "value": int(asset_counts["meets_min_rows"].sum()),
+                    "note": "",
+                },
+                {
+                    "category": "threshold",
+                    "metric": "assets_below_min_rows",
+                    "value": int((~asset_counts["meets_min_rows"]).sum()),
+                    "note": "",
+                },
+                {
+                    "category": "threshold",
+                    "metric": "assets_meet_min_rows_rate",
+                    "value": float(asset_counts["meets_min_rows"].mean()),
+                    "note": "",
+                },
+            ]
+        )
+
+    date_cov_rows = pd.DataFrame(columns=["date", "assets_covered", "coverage_rate"])
+    if {"date", "asset"}.issubset(df.columns) and rows > 0 and assets > 0:
+        date_cov = (
+            df.groupby("date", as_index=False)["asset"]
+            .nunique()
+            .rename(columns={"asset": "assets_covered"})
+            .sort_values("date")
+            .reset_index(drop=True)
+        )
+        date_cov["coverage_rate"] = date_cov["assets_covered"] / max(assets, 1)
+        date_cov_rows = date_cov
+        summary_rows.extend(
+            [
+                {
+                    "category": "coverage",
+                    "metric": "date_coverage_mean",
+                    "value": float(date_cov["coverage_rate"].mean()),
+                    "note": "按交易日统计的资产覆盖率均值",
+                },
+                {
+                    "category": "coverage",
+                    "metric": "date_coverage_min",
+                    "value": float(date_cov["coverage_rate"].min()),
+                    "note": "",
+                },
+                {
+                    "category": "coverage",
+                    "metric": "date_coverage_p10",
+                    "value": float(date_cov["coverage_rate"].quantile(0.1)),
+                    "note": "",
+                },
+                {
+                    "category": "coverage",
+                    "metric": "date_coverage_p50",
+                    "value": float(date_cov["coverage_rate"].quantile(0.5)),
+                    "note": "",
+                },
+                {
+                    "category": "coverage",
+                    "metric": "date_coverage_p90",
+                    "value": float(date_cov["coverage_rate"].quantile(0.9)),
+                    "note": "",
+                },
+            ]
+        )
+
+    summary_path = table_dir / "adapter_quality_audit.csv"
+    fields_path = table_dir / "field_missing_rates.csv"
+    asset_path = table_dir / "asset_row_counts.csv"
+    coverage_path = table_dir / "date_coverage.csv"
+
+    pd.DataFrame(summary_rows).to_csv(summary_path, index=False)
+    pd.DataFrame(field_rows).to_csv(fields_path, index=False)
+    asset_rows.to_csv(asset_path, index=False)
+    date_cov_rows.to_csv(coverage_path, index=False)
+
+    return {
+        "adapter_quality_audit_csv": str(summary_path),
+        "field_missing_rates_csv": str(fields_path),
+        "asset_row_counts_csv": str(asset_path),
+        "date_coverage_csv": str(coverage_path),
+    }
+
+
 def _load_data(
     data_cfg: dict[str, Any],
     scope_cfg: dict[str, Any],
     adapter_registry: dict[str, Any],
+    adapter_cfg: AdapterConfig | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     adapter = data_cfg["adapter"]
     sanitize = bool(data_cfg["sanitize"])
@@ -930,15 +1164,7 @@ def _load_data(
         )
 
     adapter_fn = adapter_registry[adapter]
-    adapter_cfg = AdapterConfig(
-        data_dir=str(data_cfg.get("data_dir") or ""),
-        required_cols=tuple(str(c).strip() for c in data_cfg.get("fields_required", []) if str(c).strip()) or ("date", "close"),
-        min_rows_per_asset=int(data_cfg.get("min_rows_per_asset", 30)),
-        symbols=tuple(str(x).strip() for x in data_cfg.get("symbols", []) if str(x).strip()),
-        start_date=str(data_cfg.get("start_date")) if data_cfg.get("start_date") else None,
-        end_date=str(data_cfg.get("end_date")) if data_cfg.get("end_date") else None,
-        request_timeout_sec=int(data_cfg.get("request_timeout_sec", 20)),
-    )
+    adapter_cfg = adapter_cfg or _build_adapter_config(data_cfg)
     t0 = time.perf_counter()
     panel = adapter_fn(adapter_cfg)
     loader_report["adapter_load_seconds"] = float(time.perf_counter() - t0)
@@ -1271,7 +1497,7 @@ def run_from_config(
     repo_root: str | Path | None = None,
     validate_schema: bool = True,
 ) -> ConfigRunResult:
-    """Run TS/CS factor pipeline from yaml/dict configuration."""
+    """按 YAML/字典配置执行 TS/CS 因子研究流程。"""
     raw_cfg = load_run_config(config) if not isinstance(config, dict) else dict(config)
     schema_warnings: list[str] = []
     if validate_schema:
@@ -1295,10 +1521,55 @@ def run_from_config(
             on_plugin_error=data_cfg["adapter_plugin_on_error"],
             include_defaults=True,
         )
+    with timed_stage(
+        "build_data_adapter_validator_registry",
+        timings=timings,
+        logger_name="factorlab.workflows.config_runner",
+    ):
+        data_adapter_validator_registry = build_data_adapter_validator_registry(
+            plugin_dirs=data_cfg["adapter_plugin_dirs"] if data_cfg["adapter_auto_discover"] else [],
+            plugin_specs=data_cfg["adapter_plugins"],
+            on_plugin_error=data_cfg["adapter_plugin_on_error"],
+            include_defaults=True,
+        )
+
+    adapter_cfg = None
+    adapter_validation_report: dict[str, Any] = {
+        "adapter": data_cfg["adapter"],
+        "validated": False,
+        "validator_found": False,
+        "validation_seconds": 0.0,
+        "warnings": [],
+    }
+    with timed_stage(
+        "validate_data_adapter_config",
+        timings=timings,
+        logger_name="factorlab.workflows.config_runner",
+    ):
+        if data_cfg["adapter"] in data_adapter_registry:
+            adapter_cfg = _build_adapter_config(data_cfg)
+            adapter_validation_report = _validate_adapter_config(
+                adapter=data_cfg["adapter"],
+                adapter_cfg=adapter_cfg,
+                validator_registry=data_adapter_validator_registry,
+            )
 
     with timed_stage("load_data", timings=timings, logger_name="factorlab.workflows.config_runner"):
-        panel, load_report = _load_data(data_cfg, scope_cfg, adapter_registry=data_adapter_registry)
+        panel, load_report = _load_data(
+            data_cfg,
+            scope_cfg,
+            adapter_registry=data_adapter_registry,
+            adapter_cfg=adapter_cfg,
+        )
         panel, mode_report = _ensure_mode_shape(panel, data_cfg=data_cfg)
+
+    with timed_stage("adapter_quality_audit", timings=timings, logger_name="factorlab.workflows.config_runner"):
+        adapter_audit_tables = _write_adapter_quality_audit_tables(
+            panel=panel,
+            data_cfg=data_cfg,
+            load_report=load_report,
+            out_dir=out,
+        )
 
     with timed_stage("build_factor_registry", timings=timings, logger_name="factorlab.workflows.config_runner"):
         factor_registry = build_factor_registry(
@@ -1461,8 +1732,10 @@ def run_from_config(
         "data": {
             "config": data_cfg,
             "load_report": load_report,
+            "adapter_validation_report": adapter_validation_report,
             "mode_report": mode_report,
             "required_fields": required_fields,
+            "adapter_audit_tables": adapter_audit_tables,
             "adapter_plugin_config": {
                 "auto_discover": data_cfg["adapter_auto_discover"],
                 "plugin_dirs": data_cfg["adapter_plugin_dirs"],
@@ -1470,6 +1743,14 @@ def run_from_config(
                 "plugin_on_error": data_cfg["adapter_plugin_on_error"],
                 "registry_size": len(data_adapter_registry),
                 "registry_adapters": sorted(data_adapter_registry.keys()),
+            },
+            "adapter_validator_plugin_config": {
+                "auto_discover": data_cfg["adapter_auto_discover"],
+                "plugin_dirs": data_cfg["adapter_plugin_dirs"],
+                "plugins": data_cfg["adapter_plugins"],
+                "plugin_on_error": data_cfg["adapter_plugin_on_error"],
+                "registry_size": len(data_adapter_validator_registry),
+                "registry_validators": sorted(data_adapter_validator_registry.keys()),
             },
         },
         "factors": {
@@ -1527,7 +1808,10 @@ def run_from_config(
             captured_warnings,
             logger_name="factorlab.workflows.config_runner",
         ),
-        "outputs": {k: str(v) for k, v in outputs.items()},
+        "outputs": {
+            **{k: str(v) for k, v in outputs.items()},
+            **adapter_audit_tables,
+        },
     }
     meta_path = out / "run_meta.json"
     meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False, default=str), encoding="utf-8")

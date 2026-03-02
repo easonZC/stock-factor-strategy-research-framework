@@ -1,4 +1,4 @@
-﻿"""End-to-end factor research pipeline (report-grade, configurable)."""
+﻿"""端到端因子研究流水线（可配置、报告级输出）。"""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ ALLOWED_PREPROCESS_STEPS = {"winsorize", "standardize", "neutralize"}
 
 
 class FactorResearchPipeline:
-    """Generate factor research outputs (tables + figures + HTML)."""
+    """生成因子研究输出（表格、图形、HTML 报告）。"""
 
     def __init__(self, config: ResearchConfig):
         self.config = config
@@ -130,7 +130,7 @@ class FactorResearchPipeline:
                 fac_asset_dir.mkdir(parents=True, exist_ok=True)
                 fac_table_dir.mkdir(parents=True, exist_ok=True)
 
-                # IC/RankIC across horizons
+                # 多持有期 IC / RankIC
                 horizon_rows = []
                 daily_ic_primary: pd.DataFrame | None = None
                 for h in self.config.horizons:
@@ -155,7 +155,7 @@ class FactorResearchPipeline:
                 if not horizon_rows or daily_ic_primary is None:
                     continue
 
-                # decay table + plot
+                # IC 衰减表与图
                 decay_df = build_ic_decay(horizon_rows)
                 decay_csv = fac_table_dir / "ic_decay.csv"
                 decay_df.to_csv(decay_csv, index=False)
@@ -168,7 +168,7 @@ class FactorResearchPipeline:
                     )
                 )
 
-                # primary horizon quantile analysis
+                # 主持有期分位组合分析
                 primary_ret_col = f"fwd_ret_{self.config.horizons[0]}"
                 tmpq = handle_missing(
                     panel[["date", "asset", col, primary_ret_col]],
@@ -217,7 +217,7 @@ class FactorResearchPipeline:
                 pd.DataFrame([ls_diagnostics]).to_csv(ls_diag_csv, index=False)
                 fac_table_paths.append(ls_diag_csv)
 
-                # cross-sectional regression diagnostics (Fama-MacBeth)
+                # 截面回归诊断（Fama-MacBeth）
                 reg_cols = ["date", "asset", col, primary_ret_col]
                 if "mkt_cap" in panel.columns:
                     reg_cols.append("mkt_cap")
@@ -249,7 +249,7 @@ class FactorResearchPipeline:
                         )
                     )
 
-                # group decomposition diagnostics (industry / size style)
+                # 分组归因诊断（行业/规模风格）
                 ind_detail = pd.DataFrame()
                 ind_summary = pd.DataFrame()
                 if "industry" in reg_df.columns:
@@ -314,7 +314,7 @@ class FactorResearchPipeline:
                 top_industry = ind_summary.iloc[0].to_dict() if not ind_summary.empty else {}
                 top_style = style_summary.iloc[0].to_dict() if not style_summary.empty else {}
 
-                # Newey-West on long-short daily returns
+                # 多空日收益 Newey-West 显著性
                 nw_t_ls, nw_p_ls = newey_west_tstat(q_daily["long_short"])
                 ls_profile_row = q_profile[q_profile["bucket"] == "long_short"]
                 ls_profile = ls_profile_row.iloc[0].to_dict() if not ls_profile_row.empty else {}
@@ -357,7 +357,7 @@ class FactorResearchPipeline:
                     }
                 )
 
-                # diagnostics
+                # 诊断指标
                 cov = coverage_by_date(panel[["date", "asset", col]].rename(columns={col: "factor"}), "factor")
                 cov_csv = fac_table_dir / "coverage.csv"
                 cov.to_csv(cov_csv, index=False)
@@ -368,7 +368,7 @@ class FactorResearchPipeline:
                 st.to_csv(st_csv, index=False)
                 fac_table_paths.append(st_csv)
 
-                # plots (key)
+                # 核心图表
                 fac_fig_paths.extend(
                     [
                         plot_ic_series(
@@ -411,7 +411,7 @@ class FactorResearchPipeline:
                 plot_outlier_before_after(outlier_df, assets_dir / "outlier_before_after.png")
             )
 
-        # factor correlation (when >=2)
+        # 因子相关性（仅在因子数 >= 2 时计算）
         if len(factors) >= 2:
             corr_s = factor_corr_matrix(panel, factors, method="spearman")
             corr_p = factor_corr_matrix(panel, factors, method="pearson")
