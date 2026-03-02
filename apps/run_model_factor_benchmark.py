@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 from _bootstrap import ensure_core_path
+from _ux import render_run_summary, resolve_output_dir
 
 ROOT = ensure_core_path(__file__)
 
@@ -31,8 +32,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--panel", required=True, help="面板路径（.parquet/.csv）")
     parser.add_argument(
         "--out",
-        default="outputs/research/model_factor/benchmark",
-        help="输出目录",
+        default=None,
+        help="输出目录；不填则自动生成到 outputs/research/model_factor/<name>_<timestamp>",
+    )
+    parser.add_argument(
+        "--name",
+        default=None,
+        help="运行名称（仅在未提供 --out 时生效）。",
     )
     parser.add_argument(
         "--models",
@@ -175,9 +181,15 @@ def main() -> None:
         model_artifact_dir=args.model_artifact_dir,
     )
 
+    out_dir = resolve_output_dir(
+        out=args.out,
+        run_name=args.name,
+        category="model_factor",
+        default_name="benchmark",
+    )
     res = run_model_factor_benchmark(
         panel_path=args.panel,
-        out_dir=args.out,
+        out_dir=out_dir,
         config=workflow_cfg,
         repo_root=ROOT,
     )
@@ -186,6 +198,19 @@ def main() -> None:
         res.comparison_csv,
         res.index_html,
         res.run_manifest_json,
+    )
+    LOGGER.info(
+        "\n%s",
+        render_run_summary(
+            title="model_benchmark_completed",
+            lines={
+                "out_dir": res.out_dir,
+                "comparison": res.comparison_csv,
+                "report": res.index_html,
+                "summary": res.summary_csv,
+                "manifest": res.run_manifest_json,
+            },
+        ),
     )
 
 

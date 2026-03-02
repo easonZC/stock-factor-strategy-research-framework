@@ -38,8 +38,7 @@ python3 -m pip install -r requirements.txt
 python apps/run_from_config.py \
   --config configs/cs_factor.yaml \
   --set data.path=data/raw \
-  --set factor.names='[factor_a,factor_b]' \
-  --out outputs/research/factor/cs_run
+  --set factor.names='[factor_a,factor_b]'
 ```
 
 ### 2) Time-series research (TS)
@@ -47,14 +46,30 @@ python apps/run_from_config.py \
 python apps/run_from_config.py \
   --config configs/ts_factor.yaml \
   --set data.path=data/raw/000001.csv \
-  --set factor.names='[factor_ts]' \
-  --out outputs/research/factor/ts_run
+  --set factor.names='[factor_ts]'
 ```
 
 ### 3) Validate config before run
 ```bash
 python apps/lint_config.py --config configs/cs_factor.yaml --set data.path=data/raw
 ```
+
+### 4) Benchmark model factors
+```bash
+python apps/run_model_factor_benchmark.py \
+  --panel data/panel.parquet \
+  --models ridge,rf,lgbm \
+  --name benchmark_v1
+```
+
+### 5) Optional: fast panel research wrapper
+```bash
+python apps/run_factor_research.py \
+  --panel data/panel.parquet \
+  --factors factor_a,factor_b
+```
+
+`apps/run_from_config.py`、`apps/run_factor_research.py`、`apps/run_model_factor_benchmark.py` 在未传 `--out` 时会自动生成输出目录（带时间戳），也支持 `--name` 指定更易读的运行名。
 
 ## Why `adapter` and `synthetic` still exist
 
@@ -80,6 +95,7 @@ python apps/run_from_config.py \
 - `apps/prepare_data.py`: 通过适配器准备面板数据
 - `apps/run_model_factor_benchmark.py`: 模型因子 OOF 基准评测
 - `apps/cleanup_outputs.py`: 输出目录清理
+- `docs/cli_quickstart.md`: CLI 使用路径与常见场景速查
 
 ## Output Tree
 ```text
@@ -102,4 +118,3 @@ outputs/research/factor/<run_name>/
 - No raw data committed.
 - No hard-coded tokens or proprietary paths.
 - Data/output/artifact directories are ignored by Git.
-
