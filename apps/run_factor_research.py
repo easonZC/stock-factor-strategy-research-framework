@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 from _bootstrap import ensure_core_path
+from _ux import render_run_summary, resolve_output_dir
 
 ROOT = ensure_core_path(__file__)
 
@@ -36,7 +37,16 @@ def parse_args() -> argparse.Namespace:
         help="逗号分隔因子名；留空时自动从面板列发现因子。",
     )
     parser.add_argument("--horizons", nargs="+", type=int, default=[1, 5, 10, 20], help="前瞻收益窗口")
-    parser.add_argument("--out", required=True, help="输出目录")
+    parser.add_argument(
+        "--out",
+        default=None,
+        help="输出目录；不填则自动生成到 outputs/research/factor/<name>_<timestamp>",
+    )
+    parser.add_argument(
+        "--name",
+        default=None,
+        help="运行名称（仅在未提供 --out 时生效）。",
+    )
     parser.add_argument("--neutralize", choices=["none", "size", "industry", "both"], default="both")
     parser.add_argument("--winsorize", choices=["quantile", "mad"], default="quantile")
     parser.add_argument(
@@ -114,12 +124,30 @@ def main() -> None:
     if factor_names:
         cfg["factor"]["names"] = factor_names
 
-    result = run_from_config(config=cfg, out_dir=args.out, repo_root=ROOT, validate_schema=True)
+    out_dir = resolve_output_dir(
+        out=args.out,
+        run_name=args.name,
+        category="factor",
+        default_name="panel_research",
+    )
+    result = run_from_config(config=cfg, out_dir=out_dir, repo_root=ROOT, validate_schema=True)
     LOGGER.info(
         "factor research completed: report=%s summary=%s meta=%s",
         result.index_html,
         result.summary_csv,
         result.run_meta_json,
+    )
+    LOGGER.info(
+        "\n%s",
+        render_run_summary(
+            title="panel_research_completed",
+            lines={
+                "out_dir": result.out_dir,
+                "report": result.index_html,
+                "summary": result.summary_csv,
+                "meta": result.run_meta_json,
+            },
+        ),
     )
 
 

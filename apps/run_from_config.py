@@ -10,6 +10,7 @@ import argparse
 from pathlib import Path
 
 from _bootstrap import ensure_core_path
+from _ux import render_run_summary, resolve_output_dir
 
 ROOT = ensure_core_path(__file__)
 
@@ -53,11 +54,25 @@ def parse_args() -> argparse.Namespace:
             "Examples: research.quantiles=10, research.horizons+=20, research.winsorize-='method'."
         ),
     )
-    parser.add_argument("--out", required=True, help="Output directory")
+    parser.add_argument(
+        "--out",
+        default=None,
+        help="输出目录；不填则自动生成到 outputs/research/factor/<name>_<timestamp>",
+    )
+    parser.add_argument(
+        "--name",
+        default=None,
+        help="运行名称（仅在未提供 --out 时生效）。",
+    )
     parser.add_argument(
         "--save-effective-config",
         action="store_true",
         help="Save merged+overridden effective config to <out>/effective_config.yaml.",
+    )
+    parser.add_argument(
+        "--show-effective-config",
+        action="store_true",
+        help="Print merged+overridden effective config to stdout.",
     )
     parser.add_argument(
         "--skip-schema-validation",
@@ -113,8 +128,16 @@ def main() -> None:
     args = parse_args()
     configure_logging(level=args.log_level, log_file=args.log_file, force=True)
     effective_cfg = compose_run_config(config_paths=args.config, overrides=args.overrides)
-    out_dir = Path(args.out)
+    default_name = Path(args.config[-1]).stem if args.config else "factor_run"
+    out_dir = resolve_output_dir(
+        out=args.out,
+        run_name=args.name,
+        category="factor",
+        default_name=default_name,
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
+    if args.show_effective_config:
+        print(yaml.safe_dump(effective_cfg, sort_keys=False, allow_unicode=False))
     if args.save_effective_config:
         (out_dir / "effective_config.yaml").write_text(
             yaml.safe_dump(effective_cfg, sort_keys=False, allow_unicode=False),
@@ -127,11 +150,22 @@ def main() -> None:
             len(schema_warnings),
             out_dir,
         )
+        LOGGER.info(
+            "\n%s",
+            render_run_summary(
+                title="validate_only",
+                lines={
+                    "config_files": ", ".join(args.config),
+                    "warnings": len(schema_warnings),
+                    "effective_out_dir": out_dir,
+                },
+            ),
+        )
         return
 
     result = run_from_config(
         config=effective_cfg,
-        out_dir=args.out,
+        out_dir=out_dir,
         repo_root=ROOT,
         validate_schema=not args.skip_schema_validation,
     )
@@ -140,6 +174,20 @@ def main() -> None:
         result.index_html,
         result.summary_csv,
         result.run_meta_json,
+    )
+    LOGGER.info(
+        "\n%s",
+        render_run_summary(
+            title="run_completed",
+            lines={
+                "out_dir": result.out_dir,
+                "report": result.index_html,
+                "summary": result.summary_csv,
+                "meta": result.run_meta_json,
+                "manifest": result.run_manifest_json,
+                "backtest_summary": result.backtest_summary_csv or "N/A",
+            },
+        ),
     )
     if args.cleanup_old_outputs:
         cleanup_res = OutputRetentionManager(
