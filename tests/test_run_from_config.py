@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, urlparse
 from pathlib import Path
 
 import pandas as pd
+import pytest
 import yaml
 
 from factorlab.workflows import run_from_config
@@ -121,6 +122,7 @@ def test_run_from_config_ts_smoke(tmp_path) -> None:
     assert Path(meta["outputs"]["adapter_quality_audit_csv"]).exists()
     assert "custom_transform_report" in meta["research"]
     assert meta["research"]["config"]["ts_signal_lags"] == [0, 1, 3, 5]
+    assert meta["backtest"]["strategy_preflight_report"]["resolved"] == ["sign"]
     assert (out_dir / "tables" / "factors" / "momentum_20" / "ts" / "signal_lag_ic.csv").exists()
 
 
@@ -165,6 +167,64 @@ def test_run_from_config_warn_skip_factor_and_flexible_preprocess(tmp_path) -> N
     assert meta["factors"]["requested"] == ["momentum_20", "not_exists_factor"]
     assert meta["factors"]["effective"] == ["momentum_20"]
     assert meta["factors"]["on_missing"] == "warn_skip"
+    assert "not_exists_factor" in meta["factors"]["preflight_report"]["missing"]
+
+
+def test_run_from_config_transform_preflight_warn_skip(tmp_path) -> None:
+    cfg = {
+        "run": {
+            "factor_scope": "cs",
+            "eval_axis": "cross_section",
+            "standardization": "cs_rank",
+        },
+        "data": {
+            "mode": "panel",
+            "adapter": "synthetic",
+            "fields_required": ["date", "asset", "close", "volume", "mkt_cap", "industry"],
+            "synthetic": {"n_assets": 8, "n_days": 140, "seed": 15, "start_date": "2021-01-01"},
+        },
+        "factor": {"names": ["momentum_20"], "on_missing": "raise"},
+        "research": {
+            "horizons": [1, 5],
+            "quantiles": 5,
+            "ic_rolling_window": 20,
+            "custom_transforms": [{"name": "missing_transform", "on_error": "warn_skip"}],
+        },
+        "backtest": {"enabled": False},
+    }
+    out_dir = tmp_path / "out_transform_warn_skip"
+    res = run_from_config(cfg, out_dir=out_dir)
+    assert res.index_html.exists()
+    meta = json.loads(res.run_meta_json.read_text(encoding="utf-8"))
+    report = meta["research"]["transform_preflight_report"]
+    assert "missing_transform" in report["missing"]
+    assert report["policy_by_name"]["missing_transform"] == "warn_skip"
+
+
+def test_run_from_config_transform_preflight_raise(tmp_path) -> None:
+    cfg = {
+        "run": {
+            "factor_scope": "cs",
+            "eval_axis": "cross_section",
+            "standardization": "cs_rank",
+        },
+        "data": {
+            "mode": "panel",
+            "adapter": "synthetic",
+            "fields_required": ["date", "asset", "close", "volume", "mkt_cap", "industry"],
+            "synthetic": {"n_assets": 8, "n_days": 140, "seed": 18, "start_date": "2021-01-01"},
+        },
+        "factor": {"names": ["momentum_20"], "on_missing": "raise"},
+        "research": {
+            "horizons": [1, 5],
+            "quantiles": 5,
+            "ic_rolling_window": 20,
+            "custom_transforms": [{"name": "missing_transform", "on_error": "raise"}],
+        },
+        "backtest": {"enabled": False},
+    }
+    with pytest.raises(KeyError, match="transform preflight"):
+        run_from_config(cfg, out_dir=tmp_path / "out_transform_raise")
 
 
 def test_run_from_config_minimal_local_file_config(tmp_path) -> None:

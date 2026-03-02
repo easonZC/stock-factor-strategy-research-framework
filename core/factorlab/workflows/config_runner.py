@@ -61,6 +61,7 @@ from factorlab.strategies import (
 )
 from factorlab.utils import get_logger, safe_slug, summarize_captured_warnings, timed_stage
 from factorlab.workflows.config_normalization import (
+    CONFIG_RULES,
     as_dict as _as_dict,
     as_list as _as_list,
     discover_panel_factor_columns as _discover_panel_factor_columns,
@@ -83,6 +84,7 @@ from factorlab.workflows.config_normalization import (
     to_int as _to_int,
     to_optional_float as _to_optional_float,
 )
+from factorlab.workflows.plugin_preflight import preflight_requested_components
 from factorlab.workflows.runtime import collect_runtime_manifest
 
 LOGGER = get_logger("factorlab.workflows.config_runner")
@@ -743,8 +745,8 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
                 "(建议改为标准键，避免后续歧义)。"
             )
 
-    root_allowed = {"run", "data", "factor", "research", "backtest", "universe_filter", "imports", "extends"}
-    root_required = {"data"}
+    root_allowed = CONFIG_RULES.root_allowed_sections
+    root_required = CONFIG_RULES.root_required_sections
 
     for key in sorted(set(cfg) - root_allowed):
         warnings.append(f"{key}: unknown root section (ignored by workflow).")
@@ -757,31 +759,31 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
 
     run_cfg = _as_dict(cfg.get("run"))
     scope = str(run_cfg.get("factor_scope", "cs")).strip().lower()
-    default_eval_axis = "time" if scope == "ts" else "cross_section"
+    default_eval_axis = CONFIG_RULES.default_eval_axis(scope)
     eval_axis = str(run_cfg.get("eval_axis", default_eval_axis)).strip().lower()
-    default_std = "ts_rolling_zscore" if scope == "ts" else "cs_zscore"
+    default_std = CONFIG_RULES.default_standardization(scope)
     standardization = str(run_cfg.get("standardization", default_std)).strip().lower()
-    if scope not in {"cs", "ts"}:
-        errors.append("run.factor_scope: must be one of ['cs', 'ts'].")
-    if eval_axis not in {"cross_section", "time"}:
-        errors.append("run.eval_axis: must be one of ['cross_section', 'time'].")
+    if scope not in CONFIG_RULES.scopes:
+        errors.append(f"run.factor_scope: must be one of {sorted(CONFIG_RULES.scopes)}.")
+    if eval_axis not in CONFIG_RULES.eval_axes:
+        errors.append(f"run.eval_axis: must be one of {sorted(CONFIG_RULES.eval_axes)}.")
     config_mode = str(run_cfg.get("config_mode", "compat")).strip().lower()
-    if config_mode not in {"strict", "warn", "compat"}:
-        errors.append("run.config_mode: must be one of ['strict', 'warn', 'compat'].")
+    if config_mode not in CONFIG_RULES.config_modes:
+        errors.append(f"run.config_mode: must be one of {sorted(CONFIG_RULES.config_modes)}.")
     leakage_guard_mode = str(run_cfg.get("leakage_guard_mode", "strict")).strip().lower()
-    if leakage_guard_mode not in {"strict", "warn", "off"}:
-        errors.append("run.leakage_guard_mode: must be one of ['strict', 'warn', 'off'].")
+    if leakage_guard_mode not in CONFIG_RULES.leakage_guard_modes:
+        errors.append(f"run.leakage_guard_mode: must be one of {sorted(CONFIG_RULES.leakage_guard_modes)}.")
     stop_after = str(run_cfg.get("stop_after", "backtest")).strip().lower()
-    if stop_after not in {"factor", "research", "backtest"}:
-        errors.append("run.stop_after: must be one of ['factor', 'research', 'backtest'].")
+    if stop_after not in CONFIG_RULES.stop_after_modes:
+        errors.append(f"run.stop_after: must be one of {sorted(CONFIG_RULES.stop_after_modes)}.")
     research_profile = str(run_cfg.get("research_profile", "full")).strip().lower()
-    if research_profile not in {"fast", "dev", "full"}:
-        errors.append("run.research_profile: must be one of ['fast', 'dev', 'full'].")
+    if research_profile not in CONFIG_RULES.research_profiles:
+        errors.append(f"run.research_profile: must be one of {sorted(CONFIG_RULES.research_profiles)}.")
     if "fail_on_autocorrect" in run_cfg and not isinstance(run_cfg.get("fail_on_autocorrect"), bool):
         errors.append("run.fail_on_autocorrect: must be boolean when provided.")
 
-    cs_std = {"cs_zscore", "cs_rank", "cs_robust_zscore", "none"}
-    ts_std = {"ts_rolling_zscore", "zscore", "none"}
+    cs_std = CONFIG_RULES.allowed_standardization("cs")
+    ts_std = CONFIG_RULES.allowed_standardization("ts")
     if scope == "cs" and standardization not in cs_std:
         errors.append(f"run.standardization: for cs scope use one of {sorted(cs_std)}.")
     if scope == "ts" and standardization not in ts_std:
@@ -794,9 +796,9 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
         adapter = _infer_adapter_from_path(path_like) or "synthetic"
     if adapter == "raw":
         adapter = "raw_dir"
-    mode_default = "single_asset" if scope == "ts" else "panel"
+    mode_default = CONFIG_RULES.default_data_mode(scope)
     mode = str(data_cfg.get("mode", mode_default)).strip().lower()
-    builtin_adapters = {"synthetic", "sina", "stooq", "parquet", "csv", "raw_dir"}
+    builtin_adapters = CONFIG_RULES.builtin_adapters
     adapter_plugin_dirs = _as_list(data_cfg.get("adapter_plugin_dirs"))
     adapter_plugins = _as_list(data_cfg.get("adapter_plugins"))
     has_adapter_plugins = bool(adapter_plugin_dirs) or bool(adapter_plugins)
@@ -806,8 +808,8 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
             "Use built-in ['synthetic', 'sina', 'stooq', 'parquet', 'csv', 'raw_dir'] "
             "or configure data.adapter_plugin_dirs/data.adapter_plugins."
         )
-    if mode not in {"single_asset", "panel"}:
-        errors.append("data.mode: must be one of ['single_asset', 'panel'].")
+    if mode not in set(CONFIG_RULES.default_data_mode_by_scope.values()):
+        errors.append(f"data.mode: must be one of {sorted(set(CONFIG_RULES.default_data_mode_by_scope.values()))}.")
     if adapter in {"parquet", "csv"} and not data_cfg.get("path"):
         errors.append("data.path: required when data.adapter is parquet/csv.")
     if adapter == "raw_dir" and not data_cfg.get("path"):
@@ -817,8 +819,8 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     if adapter == "stooq" and not _as_list(data_cfg.get("symbols")):
         errors.append("data.symbols: required when data.adapter is stooq.")
     adapter_plugin_on_error = str(data_cfg.get("adapter_plugin_on_error", "raise")).strip().lower()
-    if adapter_plugin_on_error not in {"raise", "warn_skip"}:
-        errors.append("data.adapter_plugin_on_error: must be one of ['raise', 'warn_skip'].")
+    if adapter_plugin_on_error not in CONFIG_RULES.on_error_modes:
+        errors.append(f"data.adapter_plugin_on_error: must be one of {sorted(CONFIG_RULES.on_error_modes)}.")
     if adapter in builtin_adapters:
         _validate_data_adapter_fragment(data_cfg=data_cfg, adapter=adapter, errors=errors, warnings_out=warnings)
 
@@ -838,17 +840,17 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     if "auto_discover_from_panel" in factor_cfg and not isinstance(factor_cfg.get("auto_discover_from_panel"), bool):
         errors.append("factor.auto_discover_from_panel: must be boolean when provided.")
     on_missing = str(factor_cfg.get("on_missing", "raise")).strip().lower()
-    if on_missing not in {"raise", "warn_skip"}:
-        errors.append("factor.on_missing: must be one of ['raise', 'warn_skip'].")
+    if on_missing not in CONFIG_RULES.on_error_modes:
+        errors.append(f"factor.on_missing: must be one of {sorted(CONFIG_RULES.on_error_modes)}.")
     plugin_on_error = str(factor_cfg.get("plugin_on_error", "raise")).strip().lower()
-    if plugin_on_error not in {"raise", "warn_skip"}:
-        errors.append("factor.plugin_on_error: must be one of ['raise', 'warn_skip'].")
+    if plugin_on_error not in CONFIG_RULES.on_error_modes:
+        errors.append(f"factor.plugin_on_error: must be one of {sorted(CONFIG_RULES.on_error_modes)}.")
     expression_on_error = str(factor_cfg.get("expression_on_error", "raise")).strip().lower()
-    if expression_on_error not in {"raise", "warn_skip"}:
-        errors.append("factor.expression_on_error: must be one of ['raise', 'warn_skip'].")
+    if expression_on_error not in CONFIG_RULES.on_error_modes:
+        errors.append(f"factor.expression_on_error: must be one of {sorted(CONFIG_RULES.on_error_modes)}.")
     combination_on_error = str(factor_cfg.get("combination_on_error", "raise")).strip().lower()
-    if combination_on_error not in {"raise", "warn_skip"}:
-        errors.append("factor.combination_on_error: must be one of ['raise', 'warn_skip'].")
+    if combination_on_error not in CONFIG_RULES.on_error_modes:
+        errors.append(f"factor.combination_on_error: must be one of {sorted(CONFIG_RULES.on_error_modes)}.")
 
     try:
         expressions = _normalize_factor_expressions(factor_cfg.get("expressions"), strict=True)
@@ -913,20 +915,20 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
                 break
 
     missing_policy = str(research_cfg.get("missing_policy", "drop")).strip().lower()
-    allowed_missing = {"drop", "fill_zero", "ffill_by_asset", "cs_median_by_date", "keep"}
+    allowed_missing = CONFIG_RULES.missing_policies
     if missing_policy not in allowed_missing:
         errors.append(f"research.missing_policy: must be one of {sorted(allowed_missing)}.")
 
     step_values = [str(x).strip().lower() for x in _as_list(research_cfg.get("preprocess_steps")) if str(x).strip()]
-    allowed_steps = {"winsorize", "standardize", "neutralize"}
+    allowed_steps = CONFIG_RULES.preprocess_steps
     for step in step_values:
         if step not in allowed_steps:
             errors.append(f"research.preprocess_steps: unsupported step '{step}'.")
             break
 
     transform_plugin_on_error = str(research_cfg.get("transform_plugin_on_error", "raise")).strip().lower()
-    if transform_plugin_on_error not in {"raise", "warn_skip"}:
-        errors.append("research.transform_plugin_on_error: must be one of ['raise', 'warn_skip'].")
+    if transform_plugin_on_error not in CONFIG_RULES.on_error_modes:
+        errors.append(f"research.transform_plugin_on_error: must be one of {sorted(CONFIG_RULES.on_error_modes)}.")
 
     custom_transforms = _as_list(research_cfg.get("custom_transforms"))
     for entry in custom_transforms:
@@ -954,7 +956,7 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     back_cfg = _as_dict(cfg.get("backtest"))
     strategy_cfg = _as_dict(back_cfg.get("strategy"))
     mode_val = str(strategy_cfg.get("mode", "")).strip().lower()
-    builtin_modes = {"sign", "topk", "longshort", "flex", "meanvar"}
+    builtin_modes = CONFIG_RULES.strategy_builtin_modes
     if mode_val and mode_val not in builtin_modes:
         has_plugins = bool(_as_list(strategy_cfg.get("plugins"))) or bool(_as_list(strategy_cfg.get("plugin_dirs")))
         if not has_plugins:
@@ -964,12 +966,12 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
             )
 
     strategy_plugin_on_error = str(strategy_cfg.get("plugin_on_error", "raise")).strip().lower()
-    if strategy_plugin_on_error not in {"raise", "warn_skip"}:
-        errors.append("backtest.strategy.plugin_on_error: must be one of ['raise', 'warn_skip'].")
+    if strategy_plugin_on_error not in CONFIG_RULES.on_error_modes:
+        errors.append(f"backtest.strategy.plugin_on_error: must be one of {sorted(CONFIG_RULES.on_error_modes)}.")
 
     bench_mode = str(back_cfg.get("benchmark_mode", "none")).strip().lower()
-    if bench_mode not in {"none", "cross_sectional_mean", "panel_column"}:
-        errors.append("backtest.benchmark_mode: must be one of ['none', 'cross_sectional_mean', 'panel_column'].")
+    if bench_mode not in CONFIG_RULES.benchmark_modes:
+        errors.append(f"backtest.benchmark_mode: must be one of {sorted(CONFIG_RULES.benchmark_modes)}.")
 
     for fld in ["max_turnover", "max_abs_weight", "max_gross_exposure", "max_net_exposure"]:
         raw = back_cfg.get(fld, None)
@@ -1426,6 +1428,30 @@ def _filter_factors_by_available_columns(
     return selected, skipped
 
 
+def _preflight_factor_candidates(
+    factor_names: list[str],
+    panel: pd.DataFrame,
+    factor_registry: dict[str, Any],
+    expression_outputs: set[str],
+    combination_outputs: set[str],
+    on_missing: str,
+) -> dict[str, Any]:
+    """对候选因子执行统一预检。"""
+    forbidden = [x for x in factor_names if _is_forbidden_leakage_name(x)]
+    requested = [x for x in factor_names if x not in set(forbidden)]
+    available = sorted(set(str(x) for x in panel.columns) | set(factor_registry.keys()) | expression_outputs | combination_outputs)
+    report = preflight_requested_components(
+        kind="factor",
+        requested=requested,
+        available=available,
+        on_missing=on_missing,
+        logger_name="factorlab.workflows.config_runner",
+    )
+    out = report.to_dict()
+    out["skipped_forbidden_candidates"] = forbidden
+    return out
+
+
 def _validate_required_fields(panel: pd.DataFrame, required: list[str]) -> None:
     missing = [c for c in required if c not in panel.columns]
     if missing:
@@ -1534,6 +1560,56 @@ def _apply_custom_transforms(
     return out, {"applied": applied, "skipped": skipped, "errors": errors}
 
 
+def _preflight_custom_transforms(
+    transform_specs: list[dict[str, Any]],
+    transform_registry: dict[str, Any],
+) -> dict[str, Any]:
+    """在执行前校验自定义变换是否全部可解析。"""
+    policy_by_name: dict[str, str] = {}
+    ordered_names: list[str] = []
+    for spec in transform_specs:
+        name = str(spec.get("name", "")).strip()
+        if not name:
+            continue
+        on_error = str(spec.get("on_error", "raise")).strip().lower()
+        prev = policy_by_name.get(name)
+        cur = "warn_skip" if on_error == "warn_skip" else "raise"
+        if prev is None:
+            policy_by_name[name] = cur
+            ordered_names.append(name)
+        elif prev == "warn_skip" and cur == "raise":
+            policy_by_name[name] = "raise"
+
+    strict_names = [x for x in ordered_names if policy_by_name.get(x) == "raise"]
+    warn_names = [x for x in ordered_names if policy_by_name.get(x) == "warn_skip"]
+    available = sorted(transform_registry.keys())
+
+    report_strict = preflight_requested_components(
+        kind="transform",
+        requested=strict_names,
+        available=available,
+        on_missing="raise",
+        logger_name="factorlab.workflows.config_runner",
+    )
+    report_warn = preflight_requested_components(
+        kind="transform",
+        requested=warn_names,
+        available=available,
+        on_missing="warn_skip",
+        logger_name="factorlab.workflows.config_runner",
+    )
+    return {
+        "kind": "transform",
+        "requested": ordered_names,
+        "available": available,
+        "resolved": [*report_strict.resolved, *[x for x in report_warn.resolved if x not in set(report_strict.resolved)]],
+        "missing": [*report_strict.missing, *[x for x in report_warn.missing if x not in set(report_strict.missing)]],
+        "on_missing": "mixed",
+        "alias_hits": {**report_strict.alias_hits, **report_warn.alias_hits},
+        "policy_by_name": policy_by_name,
+    }
+
+
 def _build_strategy(back_cfg: dict[str, Any], strategy_registry: dict[str, Any]) -> Strategy:
     mode = back_cfg["strategy_mode"]
     if mode == "topk":
@@ -1615,9 +1691,18 @@ def _run_optional_backtest(
     scope_cfg: dict[str, Any],
     back_cfg: dict[str, Any],
     out_dir: Path,
-) -> Path | None:
+) -> tuple[Path | None, dict[str, Any]]:
     if not back_cfg["enabled"]:
-        return None
+        return None, {
+            "kind": "strategy",
+            "requested": [],
+            "available": [],
+            "resolved": [],
+            "missing": [],
+            "on_missing": "raise",
+            "alias_hits": {},
+            "skipped": "backtest_disabled",
+        }
     bt_dir = out_dir / "backtest"
     bt_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1647,7 +1732,29 @@ def _run_optional_backtest(
         include_defaults=False,
     )
     strategy = None
-    if back_cfg["strategy_mode"] != "sign":
+    mode = str(back_cfg["strategy_mode"])
+    builtin_modes = {"sign", "topk", "longshort", "flex", "meanvar"}
+    strategy_preflight_report: dict[str, Any]
+    if mode in builtin_modes:
+        strategy_preflight_report = {
+            "kind": "strategy",
+            "requested": [mode],
+            "available": sorted(builtin_modes),
+            "resolved": [mode],
+            "missing": [],
+            "on_missing": "raise",
+            "alias_hits": {},
+        }
+        if mode != "sign":
+            strategy = _build_strategy(back_cfg, strategy_registry=strategy_registry)
+    else:
+        strategy_preflight_report = preflight_requested_components(
+            kind="strategy",
+            requested=[mode],
+            available=sorted(strategy_registry.keys()),
+            on_missing="raise",
+            logger_name="factorlab.workflows.config_runner",
+        ).to_dict()
         strategy = _build_strategy(back_cfg, strategy_registry=strategy_registry)
 
     factor_slug_map = _build_unique_slug_map(factors, default="factor")
@@ -1672,10 +1779,10 @@ def _run_optional_backtest(
         rows.append(row)
 
     if not rows:
-        return None
+        return None, strategy_preflight_report
     summary_path = bt_dir / "backtest_summary.csv"
     pd.DataFrame(rows).to_csv(summary_path, index=False)
-    return summary_path
+    return summary_path, strategy_preflight_report
 
 
 def _write_stage_only_outputs(
@@ -1837,6 +1944,15 @@ def run_from_config(
         | expression_dependencies
         | combination_dependencies
     )
+    factor_preflight_report = _preflight_factor_candidates(
+        factor_names=auto_factor_candidates,
+        panel=panel,
+        factor_registry=factor_registry,
+        expression_outputs=expression_outputs,
+        combination_outputs=combination_outputs,
+        on_missing=fac_cfg["on_missing"],
+    )
+    auto_factor_candidates = list(factor_preflight_report.get("resolved", auto_factor_candidates))
     leakage_guard_report = _run_leakage_guard(
         governance_cfg=governance_cfg,
         panel=panel,
@@ -1894,7 +2010,22 @@ def run_from_config(
             panel, universe_report = apply_universe_filter(panel, config=universe_cfg["config"])
 
     custom_transform_report: dict[str, Any] = {"applied": [], "skipped": [], "errors": []}
+    transform_preflight_report: dict[str, Any] = {
+        "kind": "transform",
+        "requested": [],
+        "available": sorted(transform_registry.keys()),
+        "resolved": [],
+        "missing": [],
+        "on_missing": "raise",
+        "alias_hits": {},
+        "skipped": "no_custom_transforms",
+    }
     if research_cfg["custom_transforms"]:
+        with timed_stage("custom_transforms_preflight", timings=timings, logger_name="factorlab.workflows.config_runner"):
+            transform_preflight_report = _preflight_custom_transforms(
+                transform_specs=research_cfg["custom_transforms"],
+                transform_registry=transform_registry,
+            )
         with timed_stage("custom_transforms", timings=timings, logger_name="factorlab.workflows.config_runner"):
             panel, custom_transform_report = _apply_custom_transforms(
                 panel=panel,
@@ -1909,6 +2040,16 @@ def run_from_config(
 
     stop_after = str(governance_cfg.get("stop_after", "backtest"))
     backtest_summary_csv: Path | None = None
+    strategy_preflight_report: dict[str, Any] = {
+        "kind": "strategy",
+        "requested": [],
+        "available": [],
+        "resolved": [],
+        "missing": [],
+        "on_missing": "raise",
+        "alias_hits": {},
+        "skipped": "backtest_not_run",
+    }
 
     if stop_after == "factor":
         with timed_stage("factor_stage_export", timings=timings, logger_name="factorlab.workflows.config_runner"):
@@ -1985,7 +2126,7 @@ def run_from_config(
 
             if stop_after == "backtest":
                 with timed_stage("backtest", timings=timings, logger_name="factorlab.workflows.config_runner"):
-                    backtest_summary_csv = _run_optional_backtest(
+                    backtest_summary_csv, strategy_preflight_report = _run_optional_backtest(
                         panel=panel,
                         factors=effective_factors,
                         scope_cfg=scope_cfg,
@@ -2045,6 +2186,7 @@ def run_from_config(
             "expression_dependencies": sorted(expression_dependencies),
             "combinations": combinations,
             "combination_dependencies": sorted(combination_dependencies),
+            "preflight_report": factor_preflight_report,
             "plugin_config": {
                 "auto_discover": fac_cfg["auto_discover"],
                 "plugin_dirs": fac_cfg["plugin_dirs"],
@@ -2056,6 +2198,7 @@ def run_from_config(
         "research": {
             "config": research_cfg,
             "custom_transform_report": custom_transform_report,
+            "transform_preflight_report": transform_preflight_report,
             "transform_plugin_config": {
                 "auto_discover": research_cfg["transform_auto_discover"],
                 "plugin_dirs": research_cfg["transform_plugin_dirs"],
@@ -2079,7 +2222,11 @@ def run_from_config(
             "enabled": universe_cfg["enabled"],
             "report": universe_report.__dict__ if hasattr(universe_report, "__dict__") else universe_report,
         },
-        "backtest": {"config": back_cfg, "summary_csv": str(backtest_summary_csv) if backtest_summary_csv else None},
+        "backtest": {
+            "config": back_cfg,
+            "summary_csv": str(backtest_summary_csv) if backtest_summary_csv else None,
+            "strategy_preflight_report": strategy_preflight_report,
+        },
         "rows_after_pipeline": int(len(panel)),
         "assets_after_pipeline": int(panel["asset"].nunique()),
         "dates_after_pipeline": int(panel["date"].nunique()),

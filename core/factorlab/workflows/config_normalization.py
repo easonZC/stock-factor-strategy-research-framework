@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -58,6 +59,67 @@ CONFIG_ALIAS_PATHS: dict[tuple[str, ...], tuple[str, ...]] = {
     ("research", "missing"): ("research", "missing_policy"),
     ("backtest", "strategy", "type"): ("backtest", "strategy", "mode"),
 }
+
+
+@dataclass(frozen=True, slots=True)
+class ConfigRuleSet:
+    """配置校验与归一化规则集合（单一真源）。"""
+
+    scopes: frozenset[str] = frozenset({"cs", "ts"})
+    eval_axes: frozenset[str] = frozenset({"cross_section", "time"})
+    config_modes: frozenset[str] = frozenset({"strict", "warn", "compat"})
+    leakage_guard_modes: frozenset[str] = frozenset({"strict", "warn", "off"})
+    stop_after_modes: frozenset[str] = frozenset({"factor", "research", "backtest"})
+    research_profiles: frozenset[str] = frozenset({"fast", "dev", "full"})
+    on_error_modes: frozenset[str] = frozenset({"raise", "warn_skip"})
+    strategy_builtin_modes: frozenset[str] = frozenset({"sign", "topk", "longshort", "flex", "meanvar"})
+    benchmark_modes: frozenset[str] = frozenset({"none", "cross_sectional_mean", "panel_column"})
+    builtin_adapters: frozenset[str] = frozenset({"synthetic", "sina", "stooq", "parquet", "csv", "raw_dir"})
+    missing_policies: frozenset[str] = frozenset({"drop", "fill_zero", "ffill_by_asset", "cs_median_by_date", "keep"})
+    preprocess_steps: frozenset[str] = frozenset({"winsorize", "standardize", "neutralize"})
+    std_by_scope: dict[str, frozenset[str]] = field(
+        default_factory=lambda: {
+            "cs": frozenset({"cs_zscore", "cs_rank", "cs_robust_zscore", "none"}),
+            "ts": frozenset({"ts_rolling_zscore", "zscore", "none"}),
+        }
+    )
+    default_std_by_scope: dict[str, str] = field(
+        default_factory=lambda: {
+            "cs": "cs_zscore",
+            "ts": "ts_rolling_zscore",
+        }
+    )
+    default_eval_by_scope: dict[str, str] = field(
+        default_factory=lambda: {
+            "cs": "cross_section",
+            "ts": "time",
+        }
+    )
+    default_data_mode_by_scope: dict[str, str] = field(
+        default_factory=lambda: {
+            "cs": "panel",
+            "ts": "single_asset",
+        }
+    )
+    root_allowed_sections: frozenset[str] = frozenset(
+        {"run", "data", "factor", "research", "backtest", "universe_filter", "imports", "extends"}
+    )
+    root_required_sections: frozenset[str] = frozenset({"data"})
+
+    def default_eval_axis(self, scope: str) -> str:
+        return self.default_eval_by_scope.get(str(scope).strip().lower(), "cross_section")
+
+    def default_standardization(self, scope: str) -> str:
+        return self.default_std_by_scope.get(str(scope).strip().lower(), "cs_zscore")
+
+    def allowed_standardization(self, scope: str) -> frozenset[str]:
+        return self.std_by_scope.get(str(scope).strip().lower(), frozenset())
+
+    def default_data_mode(self, scope: str) -> str:
+        return self.default_data_mode_by_scope.get(str(scope).strip().lower(), "panel")
+
+
+CONFIG_RULES = ConfigRuleSet()
 
 RESEARCH_PROFILE_DEFAULTS: dict[str, dict[str, dict[str, Any]]] = {
     "cs": {
@@ -306,18 +368,18 @@ def discover_panel_factor_columns(panel: pd.DataFrame) -> list[str]:
 def normalize_run_governance_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     run_cfg = as_dict(cfg.get("run"))
     config_mode = str(run_cfg.get("config_mode", "compat")).strip().lower()
-    if config_mode not in {"strict", "warn", "compat"}:
-        raise ValueError("run.config_mode must be one of ['strict', 'warn', 'compat'].")
+    if config_mode not in CONFIG_RULES.config_modes:
+        raise ValueError(f"run.config_mode must be one of {sorted(CONFIG_RULES.config_modes)}.")
 
     leakage_guard_mode = str(run_cfg.get("leakage_guard_mode", "strict")).strip().lower()
-    if leakage_guard_mode not in {"strict", "warn", "off"}:
-        raise ValueError("run.leakage_guard_mode must be one of ['strict', 'warn', 'off'].")
+    if leakage_guard_mode not in CONFIG_RULES.leakage_guard_modes:
+        raise ValueError(f"run.leakage_guard_mode must be one of {sorted(CONFIG_RULES.leakage_guard_modes)}.")
     stop_after = str(run_cfg.get("stop_after", "backtest")).strip().lower()
-    if stop_after not in {"factor", "research", "backtest"}:
-        raise ValueError("run.stop_after must be one of ['factor', 'research', 'backtest'].")
+    if stop_after not in CONFIG_RULES.stop_after_modes:
+        raise ValueError(f"run.stop_after must be one of {sorted(CONFIG_RULES.stop_after_modes)}.")
     research_profile = str(run_cfg.get("research_profile", "full")).strip().lower()
-    if research_profile not in {"fast", "dev", "full"}:
-        raise ValueError("run.research_profile must be one of ['fast', 'dev', 'full'].")
+    if research_profile not in CONFIG_RULES.research_profiles:
+        raise ValueError(f"run.research_profile must be one of {sorted(CONFIG_RULES.research_profiles)}.")
 
     fail_on_autocorrect = to_bool(run_cfg.get("fail_on_autocorrect"), False)
     return {
@@ -332,13 +394,13 @@ def normalize_run_governance_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
 def normalize_factor_scope(cfg: dict[str, Any]) -> dict[str, Any]:
     run_cfg = as_dict(cfg.get("run"))
     scope = str(run_cfg.get("factor_scope", "cs")).strip().lower()
-    if scope not in {"ts", "cs"}:
+    if scope not in CONFIG_RULES.scopes:
         LOGGER.warning("Invalid run.factor_scope='%s'. Use 'cs' as fallback.", scope)
         scope = "cs"
 
-    default_eval = "time" if scope == "ts" else "cross_section"
+    default_eval = CONFIG_RULES.default_eval_axis(scope)
     eval_axis = str(run_cfg.get("eval_axis", default_eval)).strip().lower()
-    if eval_axis not in {"time", "cross_section"}:
+    if eval_axis not in CONFIG_RULES.eval_axes:
         LOGGER.warning("Invalid run.eval_axis='%s'. Use '%s'.", eval_axis, default_eval)
         eval_axis = default_eval
     if scope == "ts" and eval_axis != "time":
@@ -348,12 +410,8 @@ def normalize_factor_scope(cfg: dict[str, Any]) -> dict[str, Any]:
         LOGGER.warning("CS scope only supports eval_axis=cross_section. Auto-correct applied.")
         eval_axis = "cross_section"
 
-    if scope == "ts":
-        default_std = "ts_rolling_zscore"
-        allowed_std = {"ts_rolling_zscore", "zscore", "none"}
-    else:
-        default_std = "cs_zscore"
-        allowed_std = {"cs_zscore", "cs_rank", "cs_robust_zscore", "none"}
+    default_std = CONFIG_RULES.default_standardization(scope)
+    allowed_std = CONFIG_RULES.allowed_standardization(scope)
     standardization = str(run_cfg.get("standardization", default_std)).strip().lower()
     if standardization not in allowed_std:
         LOGGER.warning(
@@ -377,7 +435,7 @@ def normalize_data_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str, Any
     adapter_plugins = [x for x in as_list(data_cfg.get("adapter_plugins")) if x is not None and x != ""]
     adapter_auto_discover = to_bool(data_cfg.get("adapter_auto_discover"), bool(adapter_plugin_dirs))
     adapter_plugin_on_error = str(data_cfg.get("adapter_plugin_on_error", "raise")).strip().lower()
-    if adapter_plugin_on_error not in {"raise", "warn_skip"}:
+    if adapter_plugin_on_error not in CONFIG_RULES.on_error_modes:
         LOGGER.warning("Invalid data.adapter_plugin_on_error='%s'. Use 'raise'.", adapter_plugin_on_error)
         adapter_plugin_on_error = "raise"
 
@@ -391,7 +449,7 @@ def normalize_data_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str, Any
         if adapter == "synthetic" and inferred_adapter:
             LOGGER.info("data.adapter 显式为 synthetic，忽略 data.path 的读取器推断。")
 
-    builtin = {"synthetic", "sina", "stooq", "parquet", "csv", "raw_dir"}
+    builtin = CONFIG_RULES.builtin_adapters
     if adapter not in builtin and not (adapter_plugins or adapter_plugin_dirs):
         if inferred_adapter:
             LOGGER.warning(
@@ -405,9 +463,9 @@ def normalize_data_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str, Any
             LOGGER.warning("Unknown data.adapter='%s' and no adapter plugins configured. Use synthetic.", adapter)
             adapter = "synthetic"
 
-    mode_default = "single_asset" if scope == "ts" else "panel"
+    mode_default = CONFIG_RULES.default_data_mode(scope)
     mode = str(data_cfg.get("mode", mode_default)).strip().lower()
-    if mode not in {"single_asset", "panel"}:
+    if mode not in set(CONFIG_RULES.default_data_mode_by_scope.values()):
         LOGGER.warning("Invalid data.mode='%s'. Use '%s'.", mode, mode_default)
         mode = mode_default
 
@@ -514,11 +572,11 @@ def normalize_factor_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     names, placeholder_detected = normalize_requested_factor_names(fac_cfg.get("names"))
     auto_discover_from_panel = to_bool(fac_cfg.get("auto_discover_from_panel"), True)
     on_missing = str(fac_cfg.get("on_missing", "raise")).strip().lower()
-    if on_missing not in {"raise", "warn_skip"}:
+    if on_missing not in CONFIG_RULES.on_error_modes:
         LOGGER.warning("Invalid factor.on_missing='%s'. Use 'raise'.", on_missing)
         on_missing = "raise"
     plugin_on_error = str(fac_cfg.get("plugin_on_error", "raise")).strip().lower()
-    if plugin_on_error not in {"raise", "warn_skip"}:
+    if plugin_on_error not in CONFIG_RULES.on_error_modes:
         LOGGER.warning("Invalid factor.plugin_on_error='%s'. Use 'raise'.", plugin_on_error)
         plugin_on_error = "raise"
 
@@ -526,13 +584,13 @@ def normalize_factor_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     auto_discover = to_bool(fac_cfg.get("auto_discover"), bool(plugin_dirs))
     plugins = [x for x in as_list(fac_cfg.get("plugins")) if x is not None and x != ""]
     expression_on_error = str(fac_cfg.get("expression_on_error", "raise")).strip().lower()
-    if expression_on_error not in {"raise", "warn_skip"}:
+    if expression_on_error not in CONFIG_RULES.on_error_modes:
         LOGGER.warning("Invalid factor.expression_on_error='%s'. Use 'raise'.", expression_on_error)
         expression_on_error = "raise"
 
     expressions = normalize_factor_expressions(fac_cfg.get("expressions"), strict=False)
     combination_on_error = str(fac_cfg.get("combination_on_error", "raise")).strip().lower()
-    if combination_on_error not in {"raise", "warn_skip"}:
+    if combination_on_error not in CONFIG_RULES.on_error_modes:
         LOGGER.warning("Invalid factor.combination_on_error='%s'. Use 'raise'.", combination_on_error)
         combination_on_error = "raise"
     combinations = normalize_factor_combinations(fac_cfg.get("combinations"), strict=False)
@@ -572,7 +630,7 @@ def normalize_custom_transforms(raw: Any) -> list[dict[str, Any]]:
                 LOGGER.warning("Ignore custom transform '%s': kwargs must be a dict.", name)
                 continue
             on_error = str(entry.get("on_error", "raise")).strip().lower()
-            if on_error not in {"raise", "warn_skip"}:
+            if on_error not in CONFIG_RULES.on_error_modes:
                 LOGGER.warning("Invalid custom transform on_error='%s' for '%s'. Use 'raise'.", on_error, name)
                 on_error = "raise"
             out.append({"name": name, "kwargs": kwargs_raw, "on_error": on_error})
@@ -592,14 +650,14 @@ def normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope, profile: str
         horizons = list(profile_defaults["horizons"])
 
     missing_policy = str(raw.get("missing_policy", profile_defaults["missing_policy"])).strip().lower()
-    allowed_missing = {"drop", "fill_zero", "ffill_by_asset", "cs_median_by_date", "keep"}
+    allowed_missing = CONFIG_RULES.missing_policies
     if missing_policy not in allowed_missing:
         LOGGER.warning("Invalid research.missing_policy='%s'. Use 'drop'.", missing_policy)
         missing_policy = "drop"
 
     default_steps = list(profile_defaults["preprocess_steps"]) if scope == "cs" else []
     steps_raw = [str(x).strip().lower() for x in as_list(raw.get("preprocess_steps", default_steps)) if str(x).strip()]
-    allowed_steps = {"winsorize", "standardize", "neutralize"}
+    allowed_steps = CONFIG_RULES.preprocess_steps
     preprocess_steps: list[str] = []
     for step in steps_raw:
         if step not in allowed_steps:
@@ -629,7 +687,7 @@ def normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope, profile: str
     transform_plugins = [x for x in as_list(raw.get("transform_plugins")) if x is not None and x != ""]
     transform_auto_discover = to_bool(raw.get("transform_auto_discover"), bool(transform_plugin_dirs))
     transform_plugin_on_error = str(raw.get("transform_plugin_on_error", "raise")).strip().lower()
-    if transform_plugin_on_error not in {"raise", "warn_skip"}:
+    if transform_plugin_on_error not in CONFIG_RULES.on_error_modes:
         LOGGER.warning("Invalid research.transform_plugin_on_error='%s'. Use 'raise'.", transform_plugin_on_error)
         transform_plugin_on_error = "raise"
 
@@ -662,12 +720,12 @@ def normalize_backtest_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str,
     strategy_cfg = as_dict(raw.get("strategy"))
     default_mode = "sign" if scope == "ts" else "longshort"
     strategy_mode = str(strategy_cfg.get("mode", default_mode)).strip().lower() or default_mode
-    builtin_modes = {"sign", "topk", "longshort", "flex", "meanvar"}
+    builtin_modes = CONFIG_RULES.strategy_builtin_modes
     if strategy_mode not in builtin_modes:
         LOGGER.info("Using custom strategy mode '%s'. Will resolve via strategy plugin registry.", strategy_mode)
 
     strategy_plugin_on_error = str(strategy_cfg.get("plugin_on_error", "raise")).strip().lower()
-    if strategy_plugin_on_error not in {"raise", "warn_skip"}:
+    if strategy_plugin_on_error not in CONFIG_RULES.on_error_modes:
         LOGGER.warning("Invalid backtest.strategy.plugin_on_error='%s'. Use 'raise'.", strategy_plugin_on_error)
         strategy_plugin_on_error = "raise"
 
@@ -724,6 +782,8 @@ def normalize_universe_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
 
 
 __all__ = [
+    "CONFIG_RULES",
+    "ConfigRuleSet",
     "NON_FACTOR_BASE_COLUMNS",
     "PLACEHOLDER_FACTOR_NAMES",
     "RESEARCH_PROFILE_DEFAULTS",

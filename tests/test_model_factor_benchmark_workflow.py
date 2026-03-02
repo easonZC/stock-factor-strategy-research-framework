@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import pandas as pd
+import pytest
 
 from factorlab.config import SyntheticConfig, UniverseFilterConfig
 from factorlab.data.synthetic import generate_synthetic_panel
@@ -86,6 +87,8 @@ def test_model_factor_benchmark_workflow_smoke(tmp_path) -> None:
 
     run_meta = json.loads(result.run_meta_json.read_text(encoding="utf-8"))
     assert "resolved_models" in run_meta
+    assert "model_preflight_report" in run_meta
+    assert run_meta["model_preflight_report"]["alias_hits"].get("random_forest") == "rf"
     assert "timings_seconds" in run_meta
     assert "warning_summary" in run_meta
 
@@ -127,3 +130,27 @@ def test_model_factor_benchmark_supports_model_plugin(tmp_path) -> None:
     run_meta = json.loads(result.run_meta_json.read_text(encoding="utf-8"))
     assert run_meta["model_plugin_config"]["auto_discover"] is True
     assert "tiny_ridge" in run_meta["model_plugin_config"]["registry_models"]
+
+
+def test_model_factor_benchmark_rejects_all_unsupported_models(tmp_path) -> None:
+    panel = generate_synthetic_panel(
+        SyntheticConfig(
+            n_assets=8,
+            n_days=160,
+            seed=2028,
+            start_date="2020-01-01",
+        )
+    )
+    panel_path = tmp_path / "panel.parquet"
+    panel.to_parquet(panel_path, index=False)
+    cfg = ModelFactorBenchmarkConfig(
+        models="unsupported_a,unsupported_b",
+        feature_cols="momentum_20,volatility_20,liquidity_shock,size",
+        train_days=80,
+        valid_days=20,
+        step_days=20,
+        min_train_rows=120,
+        min_valid_rows=40,
+    )
+    with pytest.raises(ValueError, match="No valid models"):
+        run_model_factor_benchmark(panel_path=panel_path, out_dir=tmp_path / "out_invalid_models", config=cfg)
