@@ -53,6 +53,99 @@ For every complete run, append one new entry at the top of `Run History` with:
 
 ## Run History
 
+### Run 2026-03-01-012
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal:
+  - Complete roadmap 1-4:
+    - report statistics upgrade,
+    - strategy/backtest risk constraints + optimizer strategy,
+    - model-factor OOF split/scoring enhancements.
+  - Start roadmap 5-6:
+    - engineering diagnostics (stage timing),
+    - configurable multi-factor combiner.
+- Changes:
+  - Backtest + strategy:
+    - Added mean-variance optimizer strategy:
+      - `core/factorlab/strategies/optimizer.py`
+      - integrated in `core/factorlab/strategies/{__init__.py,factory.py}` as mode `meanvar`.
+    - Extended backtest risk controls/benchmarking and metrics:
+      - `core/factorlab/config.py`
+      - `core/factorlab/backtest/engine.py`
+      - added/strengthened: `max_turnover`, `max_abs_weight`, `max_gross_exposure`, `max_net_exposure`, optional industry neutralization, benchmark return, alpha/beta, exposure metrics.
+  - Factor research diagnostics:
+    - Added regression + decomposition module:
+      - `core/factorlab/research/regression.py`
+    - Integrated into CS report pipeline:
+      - `core/factorlab/research/pipeline.py`
+      - outputs include Fama-MacBeth daily/summary tables and industry/style decomposition tables + plots.
+    - Added group bar plotting helper:
+      - `core/factorlab/plotting/{charts.py,__init__.py}`.
+  - Model-factor OOF upgrades:
+    - `core/factorlab/models/trainer.py`:
+      - added scoring/eval-axis normalization (`rank_ic|mse`, `cross_section|time`),
+      - retained rolling/expanding + purge support with stricter validation,
+      - unified tuning metric to `mean_oof_score`,
+      - fixed output label mapping consistency.
+    - `core/factorlab/workflows/model_factor_benchmark.py` + `apps/run_model_factor_benchmark.py`:
+      - wired `purge_days`, `split_mode`, `scoring_metric`, `evaluation_axis`,
+      - comparison now uses generic `best_oof_score` with `best_oof_rank_ic` compatibility column.
+  - Config-driven extensibility (start of roadmap 6):
+    - Added multi-factor combiner:
+      - `core/factorlab/factors/combiner.py`
+      - supports weighted combination, optional CS standardization, optional cross-sectional orthogonalization.
+    - Exported combiner APIs:
+      - `core/factorlab/factors/__init__.py`
+    - Integrated combiner into one-click config workflow:
+      - `core/factorlab/workflows/config_runner.py`
+      - new config keys:
+        - `factor.combinations`
+        - `factor.combination_on_error`
+      - added schema validation + metadata recording for combination dependencies/results.
+    - Config template updated:
+      - `apps/generate_run_config.py`
+  - Engineering diagnostics (start of roadmap 5):
+    - Added timed stage utility:
+      - `core/factorlab/utils/timing.py`
+      - exported via `core/factorlab/utils/__init__.py`
+    - Added per-stage timing capture in:
+      - `core/factorlab/workflows/config_runner.py`
+      - `core/factorlab/workflows/model_factor_benchmark.py`
+      - emitted in `run_meta.json` as `timings_seconds`.
+  - Documentation:
+    - `README.md` updated for:
+      - meanvar/risk controls,
+      - regression/decomposition outputs,
+      - OOF benchmark split/scoring knobs,
+      - factor combination config example.
+  - Tests:
+    - Added:
+      - `tests/test_backtest_engine_constraints.py`
+      - `tests/test_factor_combiner.py`
+    - Expanded:
+      - `tests/test_oof_split_validation.py`
+      - `tests/test_run_from_config.py`
+      - `tests/test_model_factor_benchmark_workflow.py`
+      - `tests/test_config_schema_validation.py`
+      - `tests/test_generate_run_config_script.py`
+- Validation commands:
+  - `python3 -m ruff check core apps tests`
+  - `python3 -m pytest -q`
+- Validation summary:
+  - Lint passed.
+  - Tests passed: `38 passed`.
+- Git actions:
+  - New working branch: `feat/research-backtest-combiner-20260301`
+  - Commit: `a36e288` (`feat(research): add risk controls, regression diagnostics, and factor combiner`)
+  - Push: `git push -u origin feat/research-backtest-combiner-20260301` succeeded.
+  - PR created: `https://github.com/easonZC/stock-factor-strategy-research-framework/pull/6`
+- Next run direction:
+  - Continue roadmap 5:
+    - improve warning hygiene and stage-level performance diagnostics,
+    - add tighter unit tests for regression/decomposition edge cases.
+  - Continue roadmap 6:
+    - add richer multi-factor composition modes (rank ensemble/orthogonal portfolio blend),
+    - add optional external data adapter template for public APIs.
+
 ### Run 2026-03-01-011
 - Time: 2026-03-01 (America/Los_Angeles)
 - Goal: Implement strategy plugin registry symmetry (matching factor plugins) and wire it into config-driven backtesting.
