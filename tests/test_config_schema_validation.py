@@ -92,3 +92,11 @@ def test_validate_schema_stooq_requires_symbols() -> None:
     cfg["data"]["symbols"] = []
     with pytest.raises(ValueError, match="data.symbols"):
         validate_run_config_schema(cfg, strict=True)
+
+
+def test_validate_schema_custom_adapter_allowed_with_plugins() -> None:
+    cfg = _valid_cfg()
+    cfg["data"]["adapter"] = "my_adapter"
+    cfg["data"]["adapter_plugin_dirs"] = ["plugins/data_adapters"]
+    warnings = validate_run_config_schema(cfg, strict=True)
+    assert isinstance(warnings, list)

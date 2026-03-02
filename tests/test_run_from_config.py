@@ -60,6 +60,7 @@ def test_run_from_config_cs_smoke(tmp_path) -> None:
     assert meta["scope"]["factor_scope"] == "cs"
     assert meta["scope"]["eval_axis"] == "cross_section"
     assert "timings_seconds" in meta and "research" in meta["timings_seconds"]
+    assert "warning_summary" in meta
 
 
 def test_run_from_config_ts_smoke(tmp_path) -> None:
@@ -106,6 +107,7 @@ def test_run_from_config_ts_smoke(tmp_path) -> None:
     assert meta["scope"]["factor_scope"] == "ts"
     assert meta["scope"]["eval_axis"] == "time"
     assert "timings_seconds" in meta and "backtest" in meta["timings_seconds"]
+    assert "warning_summary" in meta
 
 
 def test_run_from_config_warn_skip_factor_and_flexible_preprocess(tmp_path) -> None:

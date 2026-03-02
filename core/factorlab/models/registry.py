@@ -20,7 +20,7 @@ class ModelRegistry:
     """Factory + persistence registry for ML models."""
 
     _defaults: dict[str, dict[str, Any]] = {
-        "ridge": {"alpha": 1.0},
+        "ridge": {"alpha": 1.0, "solver": "svd"},
         "rf": {"n_estimators": 120, "max_depth": 6, "random_state": 42, "n_jobs": 1},
         "mlp": {"hidden_layer_sizes": (64, 32), "activation": "relu", "max_iter": 300, "random_state": 42},
         "lgbm": {

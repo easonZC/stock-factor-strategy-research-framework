@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import asdict, dataclass, field, is_dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -15,7 +16,7 @@ from factorlab.data import PanelSanitizationConfig, apply_universe_filter, read_
 from factorlab.factors import apply_factors, default_factor_registry
 from factorlab.models import ModelRegistry, OOFSplitConfig, train_oof_model_factor
 from factorlab.research import FactorResearchPipeline
-from factorlab.utils import get_logger, timed_stage
+from factorlab.utils import get_logger, summarize_captured_warnings, timed_stage
 from factorlab.workflows.runtime import collect_runtime_manifest
 
 LOGGER = get_logger("factorlab.workflows.model_factor_benchmark")
@@ -316,6 +317,7 @@ def run_model_factor_benchmark(
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     timings: dict[str, float] = {}
+    captured_warnings: list[Any] = []
 
     models = _resolve_models(config.models)
     feature_cols = _coerce_name_list(config.feature_cols, default=DEFAULT_FEATURE_COLS)
@@ -397,102 +399,106 @@ def run_model_factor_benchmark(
 
     model_rows: list[dict[str, object]] = []
     factor_cols: list[str] = []
-    for model_name in models:
-        with timed_stage(
-            f"train_oof_{model_name}",
-            timings=timings,
-            logger_name="factorlab.workflows.model_factor_benchmark",
-        ):
-            LOGGER.info("Training OOF model factor: %s", model_name)
-            param_grid = _parse_model_param_grid(config.model_param_grid_dir, model_name=model_name)
-            oof_res = train_oof_model_factor(
-                panel=panel,
-                feature_cols=feature_cols,
-                model_name=model_name,
-                label_horizon=int(config.label_horizon),
-                split_config=oof_cfg,
-                param_grid=param_grid,
-                scoring_metric=str(config.scoring_metric),
-                evaluation_axis=str(config.evaluation_axis),
-            )
+    with warnings.catch_warnings(record=True) as _caught:
+        warnings.simplefilter("always")
 
-            factor_col = f"{config.factor_prefix}_{model_name}"
-            oof_pred = (
-                oof_res.oof_predictions.groupby(["date", "asset"], as_index=False)["pred"].mean().rename(
-                    columns={"pred": factor_col}
-                )
-            )
-            if factor_col in panel.columns:
-                panel = panel.drop(columns=[factor_col])
-            panel = panel.merge(oof_pred, on=["date", "asset"], how="left")
-            panel[factor_col] = panel[factor_col].astype(float)
-            factor_cols.append(factor_col)
-
-            model_dir = out / f"model_{model_name}"
-            model_dir.mkdir(parents=True, exist_ok=True)
-            pred_path = model_dir / "oof_predictions.csv"
-            folds_path = model_dir / "oof_folds.csv"
-            tuning_path = model_dir / "oof_tuning.csv"
-            oof_res.oof_predictions.to_csv(pred_path, index=False)
-            oof_res.fold_summary.to_csv(folds_path, index=False)
-            oof_res.tuning_summary.to_csv(tuning_path, index=False)
-
-            model_path = ""
-            if config.save_model_artifacts:
-                artifact_path = Path(config.model_artifact_dir) / f"{factor_col}.joblib"
-                saved = ModelRegistry.save(
-                    model=oof_res.final_model,
-                    path=artifact_path,
+        for model_name in models:
+            with timed_stage(
+                f"train_oof_{model_name}",
+                timings=timings,
+                logger_name="factorlab.workflows.model_factor_benchmark",
+            ):
+                LOGGER.info("Training OOF model factor: %s", model_name)
+                param_grid = _parse_model_param_grid(config.model_param_grid_dir, model_name=model_name)
+                oof_res = train_oof_model_factor(
+                    panel=panel,
+                    feature_cols=feature_cols,
                     model_name=model_name,
-                    metadata={
-                        "feature_cols": feature_cols,
-                        "label_horizon": int(config.label_horizon),
-                        "best_params": oof_res.best_params,
+                    label_horizon=int(config.label_horizon),
+                    split_config=oof_cfg,
+                    param_grid=param_grid,
+                    scoring_metric=str(config.scoring_metric),
+                    evaluation_axis=str(config.evaluation_axis),
+                )
+
+                factor_col = f"{config.factor_prefix}_{model_name}"
+                oof_pred = (
+                    oof_res.oof_predictions.groupby(["date", "asset"], as_index=False)["pred"].mean().rename(
+                        columns={"pred": factor_col}
+                    )
+                )
+                if factor_col in panel.columns:
+                    panel = panel.drop(columns=[factor_col])
+                panel = panel.merge(oof_pred, on=["date", "asset"], how="left")
+                panel[factor_col] = panel[factor_col].astype(float)
+                factor_cols.append(factor_col)
+
+                model_dir = out / f"model_{model_name}"
+                model_dir.mkdir(parents=True, exist_ok=True)
+                pred_path = model_dir / "oof_predictions.csv"
+                folds_path = model_dir / "oof_folds.csv"
+                tuning_path = model_dir / "oof_tuning.csv"
+                oof_res.oof_predictions.to_csv(pred_path, index=False)
+                oof_res.fold_summary.to_csv(folds_path, index=False)
+                oof_res.tuning_summary.to_csv(tuning_path, index=False)
+
+                model_path = ""
+                if config.save_model_artifacts:
+                    artifact_path = Path(config.model_artifact_dir) / f"{factor_col}.joblib"
+                    saved = ModelRegistry.save(
+                        model=oof_res.final_model,
+                        path=artifact_path,
+                        model_name=model_name,
+                        metadata={
+                            "feature_cols": feature_cols,
+                            "label_horizon": int(config.label_horizon),
+                            "best_params": oof_res.best_params,
+                            "oof_score_metric": str(config.scoring_metric),
+                            "oof_evaluation_axis": str(config.evaluation_axis),
+                            "best_oof_score": oof_res.best_score,
+                        },
+                    )
+                    model_path = str(saved)
+
+                coverage = float(panel[factor_col].notna().mean()) if len(panel) > 0 else 0.0
+                model_rows.append(
+                    {
+                        "model": model_name,
+                        "factor_name": factor_col,
                         "oof_score_metric": str(config.scoring_metric),
                         "oof_evaluation_axis": str(config.evaluation_axis),
-                        "best_oof_score": oof_res.best_score,
-                    },
+                        "best_oof_score": float(oof_res.best_score),
+                        "best_oof_rank_ic": (
+                            float(oof_res.best_score)
+                            if str(config.scoring_metric).strip().lower() == "rank_ic"
+                            else float("nan")
+                        ),
+                        "oof_rows": int(len(oof_res.oof_predictions)),
+                        "oof_unique_dates": int(oof_res.oof_predictions["date"].nunique()),
+                        "factor_coverage_in_panel": coverage,
+                        "best_params_json": json.dumps(_to_jsonable(oof_res.best_params), ensure_ascii=False),
+                        "oof_predictions_csv": str(pred_path),
+                        "oof_folds_csv": str(folds_path),
+                        "oof_tuning_csv": str(tuning_path),
+                        "model_path": model_path,
+                    }
                 )
-                model_path = str(saved)
 
-            coverage = float(panel[factor_col].notna().mean()) if len(panel) > 0 else 0.0
-            model_rows.append(
-                {
-                    "model": model_name,
-                    "factor_name": factor_col,
-                    "oof_score_metric": str(config.scoring_metric),
-                    "oof_evaluation_axis": str(config.evaluation_axis),
-                    "best_oof_score": float(oof_res.best_score),
-                    "best_oof_rank_ic": (
-                        float(oof_res.best_score)
-                        if str(config.scoring_metric).strip().lower() == "rank_ic"
-                        else float("nan")
-                    ),
-                    "oof_rows": int(len(oof_res.oof_predictions)),
-                    "oof_unique_dates": int(oof_res.oof_predictions["date"].nunique()),
-                    "factor_coverage_in_panel": coverage,
-                    "best_params_json": json.dumps(_to_jsonable(oof_res.best_params), ensure_ascii=False),
-                    "oof_predictions_csv": str(pred_path),
-                    "oof_folds_csv": str(folds_path),
-                    "oof_tuning_csv": str(tuning_path),
-                    "model_path": model_path,
-                }
+        with timed_stage("research_report", timings=timings, logger_name="factorlab.workflows.model_factor_benchmark"):
+            report_factors = [*factor_cols, *extra_report_factors]
+            research_cfg = ResearchConfig(
+                horizons=horizons,
+                quantiles=int(config.quantiles),
+                ic_rolling_window=int(config.ic_rolling_window),
+                winsorize_method=winsorize_mode,
+                neutralization=NeutralizationConfig(mode=neutralize_mode),
             )
-
-    with timed_stage("research_report", timings=timings, logger_name="factorlab.workflows.model_factor_benchmark"):
-        report_factors = [*factor_cols, *extra_report_factors]
-        research_cfg = ResearchConfig(
-            horizons=horizons,
-            quantiles=int(config.quantiles),
-            ic_rolling_window=int(config.ic_rolling_window),
-            winsorize_method=winsorize_mode,
-            neutralization=NeutralizationConfig(mode=neutralize_mode),
-        )
-        report_outputs = FactorResearchPipeline(research_cfg).run(
-            panel=panel,
-            factors=report_factors,
-            out_dir=out,
-        )
+            report_outputs = FactorResearchPipeline(research_cfg).run(
+                panel=panel,
+                factors=report_factors,
+                out_dir=out,
+            )
+        captured_warnings.extend(list(_caught))
 
     summary = pd.read_csv(report_outputs["summary_csv"])
     rows: list[dict[str, object]] = []
@@ -529,6 +535,10 @@ def run_model_factor_benchmark(
         "assets_after_filters": int(panel["asset"].nunique()),
         "dates_after_filters": int(panel["date"].nunique()),
         "timings_seconds": timings,
+        "warning_summary": summarize_captured_warnings(
+            captured_warnings,
+            logger_name="factorlab.workflows.model_factor_benchmark",
+        ),
         "outputs": {k: str(v) for k, v in report_outputs.items()},
         "comparison_csv": str(comparison_path),
     }

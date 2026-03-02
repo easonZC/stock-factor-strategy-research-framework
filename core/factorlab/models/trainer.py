@@ -15,6 +15,7 @@ from factorlab.data.synthetic import generate_synthetic_panel
 from factorlab.factors.simple import LiquidityShockFactor, MomentumFactor, VolatilityFactor
 from factorlab.models.registry import ModelRegistry
 from factorlab.research.forward_returns import add_forward_returns
+from factorlab.utils import safe_corr
 
 
 @dataclass(slots=True)
@@ -67,7 +68,7 @@ def _daily_rank_ic(df: pd.DataFrame, pred_col: str, label_col: str) -> float:
         g = grp[[pred_col, label_col]].dropna()
         if len(g) < 5:
             continue
-        rows.append(float(g[pred_col].corr(g[label_col], method="spearman")))
+        rows.append(float(safe_corr(g[pred_col], g[label_col], method="spearman", min_obs=5)))
     if not rows:
         return float("nan")
     return float(np.nanmean(rows))
@@ -127,7 +128,7 @@ def _time_series_ic(df: pd.DataFrame, pred_col: str, label_col: str) -> float:
         g = grp[[pred_col, label_col]].dropna()
         if len(g) < 8:
             continue
-        vals.append(float(g[pred_col].corr(g[label_col])))
+        vals.append(float(safe_corr(g[pred_col], g[label_col], method="pearson", min_obs=8)))
     if not vals:
         return float("nan")
     return float(np.nanmean(vals))

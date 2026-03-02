@@ -70,3 +70,4 @@ def test_model_factor_benchmark_workflow_smoke(tmp_path) -> None:
     run_meta = json.loads(result.run_meta_json.read_text(encoding="utf-8"))
     assert "resolved_models" in run_meta
     assert "timings_seconds" in run_meta
+    assert "warning_summary" in run_meta

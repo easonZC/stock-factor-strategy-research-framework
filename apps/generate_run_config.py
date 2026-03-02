@@ -33,6 +33,10 @@ def _base_data(scope: str, adapter: str) -> dict[str, Any]:
         "adapter": adapter,
         "sanitize": True,
         "duplicate_policy": "last",
+        "adapter_auto_discover": False,
+        "adapter_plugin_dirs": [],
+        "adapter_plugins": [],
+        "adapter_plugin_on_error": "raise",
     }
 
     if adapter == "synthetic":

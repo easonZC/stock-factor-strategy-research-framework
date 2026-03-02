@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -24,9 +25,8 @@ from factorlab.config import (
 from factorlab.data import (
     PanelSanitizationConfig,
     apply_universe_filter,
+    build_data_adapter_registry,
     generate_synthetic_panel,
-    prepare_sina_panel,
-    prepare_stooq_panel,
     read_panel,
 )
 from factorlab.factors import (
@@ -46,7 +46,7 @@ from factorlab.strategies import (
     TopKLongStrategy,
     build_strategy_registry,
 )
-from factorlab.utils import get_logger, timed_stage
+from factorlab.utils import get_logger, summarize_captured_warnings, timed_stage
 from factorlab.workflows.runtime import collect_runtime_manifest
 
 LOGGER = get_logger("factorlab.workflows.config_runner")
@@ -173,9 +173,20 @@ def _normalize_factor_scope(cfg: dict[str, Any]) -> dict[str, Any]:
 
 def _normalize_data_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str, Any]:
     data_cfg = _as_dict(cfg.get("data"))
+    adapter_plugin_dirs = [
+        str(x).strip() for x in _as_list(data_cfg.get("adapter_plugin_dirs")) if str(x).strip()
+    ]
+    adapter_plugins = [x for x in _as_list(data_cfg.get("adapter_plugins")) if x is not None and x != ""]
+    adapter_auto_discover = _to_bool(data_cfg.get("adapter_auto_discover"), bool(adapter_plugin_dirs))
+    adapter_plugin_on_error = str(data_cfg.get("adapter_plugin_on_error", "raise")).strip().lower()
+    if adapter_plugin_on_error not in {"raise", "warn_skip"}:
+        LOGGER.warning("Invalid data.adapter_plugin_on_error='%s'. Use 'raise'.", adapter_plugin_on_error)
+        adapter_plugin_on_error = "raise"
+
     adapter = str(data_cfg.get("adapter", "synthetic")).strip().lower()
-    if adapter not in {"synthetic", "sina", "stooq", "parquet", "csv"}:
-        LOGGER.warning("Invalid data.adapter='%s'. Use synthetic.", adapter)
+    builtin = {"synthetic", "sina", "stooq", "parquet", "csv"}
+    if adapter not in builtin and not (adapter_plugins or adapter_plugin_dirs):
+        LOGGER.warning("Unknown data.adapter='%s' and no adapter plugins configured. Use synthetic.", adapter)
         adapter = "synthetic"
 
     mode_default = "single_asset" if scope == "ts" else "panel"
@@ -198,11 +209,16 @@ def _normalize_data_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str, An
         "start_date": data_cfg.get("start_date"),
         "end_date": data_cfg.get("end_date"),
         "request_timeout_sec": max(3, _to_int(data_cfg.get("request_timeout_sec"), 20)),
+        "min_rows_per_asset": max(1, _to_int(data_cfg.get("min_rows_per_asset"), 30)),
         "asset": data_cfg.get("asset"),
         "sanitize": _to_bool(data_cfg.get("sanitize"), True),
         "duplicate_policy": str(data_cfg.get("duplicate_policy", "last")).strip().lower(),
         "fields_required": fields_required,
         "synthetic": _as_dict(data_cfg.get("synthetic")),
+        "adapter_auto_discover": adapter_auto_discover,
+        "adapter_plugin_dirs": adapter_plugin_dirs,
+        "adapter_plugins": adapter_plugins,
+        "adapter_plugin_on_error": adapter_plugin_on_error,
     }
 
 
@@ -535,8 +551,16 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     data_cfg = _as_dict(cfg.get("data"))
     adapter = str(data_cfg.get("adapter", "")).strip().lower()
     mode = str(data_cfg.get("mode", "")).strip().lower()
-    if adapter not in {"synthetic", "sina", "stooq", "parquet", "csv"}:
-        errors.append("data.adapter: must be one of ['synthetic', 'sina', 'stooq', 'parquet', 'csv'].")
+    builtin_adapters = {"synthetic", "sina", "stooq", "parquet", "csv"}
+    adapter_plugin_dirs = _as_list(data_cfg.get("adapter_plugin_dirs"))
+    adapter_plugins = _as_list(data_cfg.get("adapter_plugins"))
+    has_adapter_plugins = bool(adapter_plugin_dirs) or bool(adapter_plugins)
+    if adapter not in builtin_adapters and not has_adapter_plugins:
+        errors.append(
+            "data.adapter: unknown adapter without data adapter plugins. "
+            "Use built-in ['synthetic', 'sina', 'stooq', 'parquet', 'csv'] "
+            "or configure data.adapter_plugin_dirs/data.adapter_plugins."
+        )
     if mode not in {"single_asset", "panel"}:
         errors.append("data.mode: must be one of ['single_asset', 'panel'].")
     if adapter in {"parquet", "csv"} and not data_cfg.get("path"):
@@ -545,6 +569,9 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
         errors.append("data.data_dir: required when data.adapter is sina.")
     if adapter == "stooq" and not _as_list(data_cfg.get("symbols")):
         errors.append("data.symbols: required when data.adapter is stooq.")
+    adapter_plugin_on_error = str(data_cfg.get("adapter_plugin_on_error", "raise")).strip().lower()
+    if adapter_plugin_on_error not in {"raise", "warn_skip"}:
+        errors.append("data.adapter_plugin_on_error: must be one of ['raise', 'warn_skip'].")
 
     factor_cfg = _as_dict(cfg.get("factor"))
     factor_names = _as_list(factor_cfg.get("names"))
@@ -667,7 +694,11 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     return warnings
 
 
-def _load_data(data_cfg: dict[str, Any], scope_cfg: dict[str, Any]) -> tuple[pd.DataFrame, dict[str, Any]]:
+def _load_data(
+    data_cfg: dict[str, Any],
+    scope_cfg: dict[str, Any],
+    adapter_registry: dict[str, Any],
+) -> tuple[pd.DataFrame, dict[str, Any]]:
     adapter = data_cfg["adapter"]
     sanitize = bool(data_cfg["sanitize"])
     duplicate_policy = str(data_cfg["duplicate_policy"])
@@ -691,44 +722,43 @@ def _load_data(data_cfg: dict[str, Any], scope_cfg: dict[str, Any]) -> tuple[pd.
         }
         return panel, loader_report
 
-    if adapter == "sina":
-        data_dir = data_cfg.get("data_dir")
-        if not data_dir:
-            raise ValueError("data.data_dir is required when data.adapter=sina")
-        panel = prepare_sina_panel(AdapterConfig(data_dir=str(data_dir)))
-        return panel, loader_report
-
-    if adapter == "stooq":
-        symbols = [str(x).strip() for x in data_cfg.get("symbols", []) if str(x).strip()]
-        if not symbols:
-            raise ValueError("data.symbols is required when data.adapter=stooq")
-        panel = prepare_stooq_panel(
-            AdapterConfig(
-                symbols=tuple(symbols),
-                start_date=str(data_cfg.get("start_date")) if data_cfg.get("start_date") else None,
-                end_date=str(data_cfg.get("end_date")) if data_cfg.get("end_date") else None,
-                request_timeout_sec=int(data_cfg.get("request_timeout_sec", 20)),
-            )
+    if adapter in {"parquet", "csv"}:
+        path = data_cfg.get("path")
+        if not path:
+            raise ValueError("data.path is required when data.adapter is parquet/csv")
+        read_res = read_panel(
+            path=str(path),
+            sanitize=sanitize,
+            sanitization_config=PanelSanitizationConfig(duplicate_policy=duplicate_policy),
+            return_report=sanitize,
         )
-        loader_report["symbols"] = symbols
-        loader_report["start_date"] = data_cfg.get("start_date")
-        loader_report["end_date"] = data_cfg.get("end_date")
+        if sanitize:
+            panel, report = read_res
+            loader_report["sanitization_report"] = report.__dict__ if hasattr(report, "__dict__") else str(report)
+        else:
+            panel = read_res
         return panel, loader_report
 
-    path = data_cfg.get("path")
-    if not path:
-        raise ValueError("data.path is required when data.adapter is parquet/csv")
-    read_res = read_panel(
-        path=str(path),
-        sanitize=sanitize,
-        sanitization_config=PanelSanitizationConfig(duplicate_policy=duplicate_policy),
-        return_report=sanitize,
+    if adapter not in adapter_registry:
+        raise KeyError(
+            f"Unknown data adapter '{adapter}'. Available adapters: {sorted(adapter_registry.keys())}"
+        )
+
+    adapter_fn = adapter_registry[adapter]
+    adapter_cfg = AdapterConfig(
+        data_dir=str(data_cfg.get("data_dir") or ""),
+        required_cols=tuple(str(c).strip() for c in data_cfg.get("fields_required", []) if str(c).strip()) or ("date", "close"),
+        min_rows_per_asset=int(data_cfg.get("min_rows_per_asset", 30)),
+        symbols=tuple(str(x).strip() for x in data_cfg.get("symbols", []) if str(x).strip()),
+        start_date=str(data_cfg.get("start_date")) if data_cfg.get("start_date") else None,
+        end_date=str(data_cfg.get("end_date")) if data_cfg.get("end_date") else None,
+        request_timeout_sec=int(data_cfg.get("request_timeout_sec", 20)),
     )
-    if sanitize:
-        panel, report = read_res
-        loader_report["sanitization_report"] = report.__dict__ if hasattr(report, "__dict__") else str(report)
-    else:
-        panel = read_res
+    panel = adapter_fn(adapter_cfg)
+    loader_report["adapter_registry_size"] = int(len(adapter_registry))
+    loader_report["symbols"] = list(adapter_cfg.symbols)
+    loader_report["start_date"] = adapter_cfg.start_date
+    loader_report["end_date"] = adapter_cfg.end_date
     return panel, loader_report
 
 
@@ -989,9 +1019,18 @@ def run_from_config(
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     timings: dict[str, float] = {}
+    captured_warnings: list[Any] = []
+
+    with timed_stage("build_data_adapter_registry", timings=timings, logger_name="factorlab.workflows.config_runner"):
+        data_adapter_registry = build_data_adapter_registry(
+            plugin_dirs=data_cfg["adapter_plugin_dirs"] if data_cfg["adapter_auto_discover"] else [],
+            plugin_specs=data_cfg["adapter_plugins"],
+            on_plugin_error=data_cfg["adapter_plugin_on_error"],
+            include_defaults=True,
+        )
 
     with timed_stage("load_data", timings=timings, logger_name="factorlab.workflows.config_runner"):
-        panel, load_report = _load_data(data_cfg, scope_cfg)
+        panel, load_report = _load_data(data_cfg, scope_cfg, adapter_registry=data_adapter_registry)
         panel, mode_report = _ensure_mode_shape(panel, data_cfg=data_cfg)
 
     with timed_stage("build_factor_registry", timings=timings, logger_name="factorlab.workflows.config_runner"):
@@ -1077,51 +1116,59 @@ def run_from_config(
     if panel.empty:
         raise RuntimeError("No data available after preprocessing.")
 
-    with timed_stage("research", timings=timings, logger_name="factorlab.workflows.config_runner"):
-        if scope_cfg["factor_scope"] == "cs":
-            wins = _as_dict(research_cfg.get("winsorize"))
-            neu = _as_dict(research_cfg.get("neutralize"))
-            neutral_mode = (
-                str(neu.get("mode", "both")).strip().lower() if _to_bool(neu.get("enabled"), True) else "none"
-            )
-            if neutral_mode not in {"none", "size", "industry", "both"}:
-                LOGGER.warning("Invalid research.neutralize.mode='%s'. Use 'both'.", neutral_mode)
-                neutral_mode = "both"
+    with warnings.catch_warnings(record=True) as _caught:
+        warnings.simplefilter("always")
 
-            cs_cfg = ResearchConfig(
-                horizons=research_cfg["horizons"],
-                quantiles=int(research_cfg["quantiles"]),
-                ic_rolling_window=int(research_cfg["ic_rolling_window"]),
-                standardization=scope_cfg["standardization"],  # type: ignore[arg-type]
-                winsorize_enabled=_to_bool(wins.get("enabled"), True),
-                winsorize_method=str(wins.get("method", "quantile")).strip().lower(),
-                lower_q=_to_float(wins.get("lower_q"), 0.01),
-                upper_q=_to_float(wins.get("upper_q"), 0.99),
-                mad_scale=max(1.0, _to_float(wins.get("mad_scale"), 5.0)),
-                missing_policy=str(research_cfg.get("missing_policy", "drop")),
-                preprocess_steps=research_cfg.get("preprocess_steps") or ["winsorize", "standardize", "neutralize"],
-                neutralization=NeutralizationConfig(mode=neutral_mode),  # type: ignore[arg-type]
-            )
-            outputs = FactorResearchPipeline(cs_cfg).run(panel=panel, factors=effective_factors, out_dir=out)
-        else:
-            ts_cfg = TSResearchConfig(
-                horizons=research_cfg["horizons"],
-                quantiles=int(research_cfg["quantiles"]),
-                ic_rolling_window=int(research_cfg["ic_rolling_window"]),
-                standardization=scope_cfg["standardization"],  # type: ignore[arg-type]
-                ts_standardize_window=int(research_cfg["ts_standardize_window"]),
-                ts_quantile_lookback=int(research_cfg["ts_quantile_lookback"]),
-            )
-            outputs = TimeSeriesFactorResearchPipeline(ts_cfg).run(panel=panel, factors=effective_factors, out_dir=out)
+        with timed_stage("research", timings=timings, logger_name="factorlab.workflows.config_runner"):
+            if scope_cfg["factor_scope"] == "cs":
+                wins = _as_dict(research_cfg.get("winsorize"))
+                neu = _as_dict(research_cfg.get("neutralize"))
+                neutral_mode = (
+                    str(neu.get("mode", "both")).strip().lower() if _to_bool(neu.get("enabled"), True) else "none"
+                )
+                if neutral_mode not in {"none", "size", "industry", "both"}:
+                    LOGGER.warning("Invalid research.neutralize.mode='%s'. Use 'both'.", neutral_mode)
+                    neutral_mode = "both"
 
-    with timed_stage("backtest", timings=timings, logger_name="factorlab.workflows.config_runner"):
-        backtest_summary_csv = _run_optional_backtest(
-            panel=panel,
-            factors=effective_factors,
-            scope_cfg=scope_cfg,
-            back_cfg=back_cfg,
-            out_dir=out,
-        )
+                cs_cfg = ResearchConfig(
+                    horizons=research_cfg["horizons"],
+                    quantiles=int(research_cfg["quantiles"]),
+                    ic_rolling_window=int(research_cfg["ic_rolling_window"]),
+                    standardization=scope_cfg["standardization"],  # type: ignore[arg-type]
+                    winsorize_enabled=_to_bool(wins.get("enabled"), True),
+                    winsorize_method=str(wins.get("method", "quantile")).strip().lower(),
+                    lower_q=_to_float(wins.get("lower_q"), 0.01),
+                    upper_q=_to_float(wins.get("upper_q"), 0.99),
+                    mad_scale=max(1.0, _to_float(wins.get("mad_scale"), 5.0)),
+                    missing_policy=str(research_cfg.get("missing_policy", "drop")),
+                    preprocess_steps=research_cfg.get("preprocess_steps") or ["winsorize", "standardize", "neutralize"],
+                    neutralization=NeutralizationConfig(mode=neutral_mode),  # type: ignore[arg-type]
+                )
+                outputs = FactorResearchPipeline(cs_cfg).run(panel=panel, factors=effective_factors, out_dir=out)
+            else:
+                ts_cfg = TSResearchConfig(
+                    horizons=research_cfg["horizons"],
+                    quantiles=int(research_cfg["quantiles"]),
+                    ic_rolling_window=int(research_cfg["ic_rolling_window"]),
+                    standardization=scope_cfg["standardization"],  # type: ignore[arg-type]
+                    ts_standardize_window=int(research_cfg["ts_standardize_window"]),
+                    ts_quantile_lookback=int(research_cfg["ts_quantile_lookback"]),
+                )
+                outputs = TimeSeriesFactorResearchPipeline(ts_cfg).run(
+                    panel=panel,
+                    factors=effective_factors,
+                    out_dir=out,
+                )
+
+        with timed_stage("backtest", timings=timings, logger_name="factorlab.workflows.config_runner"):
+            backtest_summary_csv = _run_optional_backtest(
+                panel=panel,
+                factors=effective_factors,
+                scope_cfg=scope_cfg,
+                back_cfg=back_cfg,
+                out_dir=out,
+            )
+        captured_warnings.extend(list(_caught))
 
     meta = {
         "scope": scope_cfg,
@@ -1130,6 +1177,14 @@ def run_from_config(
             "load_report": load_report,
             "mode_report": mode_report,
             "required_fields": required_fields,
+            "adapter_plugin_config": {
+                "auto_discover": data_cfg["adapter_auto_discover"],
+                "plugin_dirs": data_cfg["adapter_plugin_dirs"],
+                "plugins": data_cfg["adapter_plugins"],
+                "plugin_on_error": data_cfg["adapter_plugin_on_error"],
+                "registry_size": len(data_adapter_registry),
+                "registry_adapters": sorted(data_adapter_registry.keys()),
+            },
         },
         "factors": {
             "requested": requested_factors,
@@ -1171,6 +1226,10 @@ def run_from_config(
         "assets_after_pipeline": int(panel["asset"].nunique()),
         "dates_after_pipeline": int(panel["date"].nunique()),
         "timings_seconds": timings,
+        "warning_summary": summarize_captured_warnings(
+            captured_warnings,
+            logger_name="factorlab.workflows.config_runner",
+        ),
         "outputs": {k: str(v) for k, v in outputs.items()},
     }
     meta_path = out / "run_meta.json"

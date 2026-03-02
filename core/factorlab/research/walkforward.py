@@ -12,6 +12,7 @@ from factorlab.config import BacktestConfig
 from factorlab.models.registry import ModelRegistry
 from factorlab.research.forward_returns import add_forward_returns
 from factorlab.strategies.base import Strategy
+from factorlab.utils import safe_corr
 
 
 @dataclass(slots=True)
@@ -44,7 +45,7 @@ def _average_daily_ic(df: pd.DataFrame, score_col: str, ret_col: str) -> float:
         g = grp[[score_col, ret_col]].dropna()
         if len(g) < 5:
             continue
-        rows.append(float(g[score_col].corr(g[ret_col], method="spearman")))
+        rows.append(float(safe_corr(g[score_col], g[ret_col], method="spearman", min_obs=5)))
     if not rows:
         return float("nan")
     return float(np.nanmean(rows))

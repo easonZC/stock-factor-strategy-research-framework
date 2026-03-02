@@ -7,6 +7,7 @@ import math
 import numpy as np
 import pandas as pd
 from scipy import stats
+from factorlab.utils import safe_corr
 
 
 def compute_daily_ic(df: pd.DataFrame, factor_col: str, ret_col: str) -> pd.DataFrame:
@@ -16,8 +17,8 @@ def compute_daily_ic(df: pd.DataFrame, factor_col: str, ret_col: str) -> pd.Data
         g = grp[[factor_col, ret_col]].dropna()
         if len(g) < 5:
             continue
-        ic = g[factor_col].corr(g[ret_col], method="pearson")
-        rank_ic = g[factor_col].corr(g[ret_col], method="spearman")
+        ic = safe_corr(g[factor_col], g[ret_col], method="pearson", min_obs=5)
+        rank_ic = safe_corr(g[factor_col], g[ret_col], method="spearman", min_obs=5)
         rows.append({"date": dt, "ic": float(ic), "rank_ic": float(rank_ic)})
     if not rows:
         return pd.DataFrame(columns=["date", "ic", "rank_ic"])

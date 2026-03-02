@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from factorlab.utils import safe_corr
 
 
 def _max_drawdown_from_returns(returns: pd.Series) -> float:
@@ -73,7 +74,7 @@ def summarize_quantile_monotonicity(q_daily: pd.DataFrame) -> dict[str, float]:
         mask = np.isfinite(vals)
         if mask.sum() < 3:
             continue
-        rho = pd.Series(q_idx[mask]).corr(pd.Series(vals[mask]), method="spearman")
+        rho = safe_corr(pd.Series(q_idx[mask]), pd.Series(vals[mask]), method="spearman", min_obs=3)
         rho_vals.append(float(rho))
 
     if not rho_vals:
@@ -133,9 +134,6 @@ def compute_factor_rank_autocorr(
         cur = rank_wide.iloc[i]
         prev = rank_wide.iloc[i - lag]
         mask = cur.notna() & prev.notna()
-        if mask.sum() < 5:
-            rho = np.nan
-        else:
-            rho = float(cur[mask].corr(prev[mask]))
+        rho = safe_corr(cur[mask], prev[mask], method="pearson", min_obs=5)
         rows.append({"date": rank_wide.index[i], f"rank_autocorr_lag{lag}": rho})
     return pd.DataFrame(rows)

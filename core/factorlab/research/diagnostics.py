@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from factorlab.utils import safe_corr
 
 
 def coverage_by_date(df: pd.DataFrame, factor_col: str) -> pd.DataFrame:
@@ -48,14 +49,14 @@ def factor_stability(df: pd.DataFrame, factor_col: str) -> pd.DataFrame:
         if i >= 1:
             row_l1 = wide.iloc[i - 1]
             mask = row_now.notna() & row_l1.notna()
-            ac1.append(row_now[mask].corr(row_l1[mask]) if mask.sum() > 5 else np.nan)
+            ac1.append(safe_corr(row_now[mask], row_l1[mask], method="pearson", min_obs=5))
         else:
             ac1.append(np.nan)
 
         if i >= 5:
             row_l5 = wide.iloc[i - 5]
             mask = row_now.notna() & row_l5.notna()
-            ac5.append(row_now[mask].corr(row_l5[mask]) if mask.sum() > 5 else np.nan)
+            ac5.append(safe_corr(row_now[mask], row_l5[mask], method="pearson", min_obs=5))
         else:
             ac5.append(np.nan)
 
@@ -77,5 +78,16 @@ def factor_corr_matrix(df: pd.DataFrame, factors: list[str], method: str = "spea
     """Multi-factor correlation matrix."""
     if len(factors) < 2:
         return pd.DataFrame()
-    mat = df[factors].corr(method=method)
+    cols = [c for c in factors if c in df.columns]
+    if len(cols) < 2:
+        return pd.DataFrame()
+    mat = pd.DataFrame(np.nan, index=cols, columns=cols, dtype=float)
+    for c in cols:
+        mat.loc[c, c] = 1.0 if pd.to_numeric(df[c], errors="coerce").dropna().nunique() > 1 else np.nan
+    for i, c1 in enumerate(cols):
+        for j in range(i + 1, len(cols)):
+            c2 = cols[j]
+            rho = safe_corr(df[c1], df[c2], method=method, min_obs=5)
+            mat.loc[c1, c2] = rho
+            mat.loc[c2, c1] = rho
     return mat

@@ -145,9 +145,15 @@ python apps/generate_run_config.py --scope ts --adapter parquet --set data.path=
 - `backtest` risk controls: `max_turnover|max_abs_weight|max_gross_exposure|max_net_exposure`
 - `backtest.benchmark_mode`: `none|cross_sectional_mean|panel_column`
 - `data.adapter`: supports `synthetic|parquet|csv|sina|stooq`
+- data-adapter plugins:
+  - `data.adapter`: custom adapter name
+  - `data.adapter_auto_discover` + `data.adapter_plugin_dirs` for folder discovery
+  - `data.adapter_plugins` for explicit module/class-path loading
+  - `data.adapter_plugin_on_error`: `raise|warn_skip`
 - CLI `run_from_config` supports repeated `--config` deep-merge and repeated `--set key.path=value` overrides.
 - CLI `run_from_config` pre-validates config schema by default; use `--skip-schema-validation` to bypass.
 - CLI logging: major entrypoints support `--log-level` and `--log-file`; env `FACTORLAB_LOG_LEVEL` is also supported.
+  - run metadata includes `warning_summary` for benign/actionable warning audit.
 
 ### Plugin Factor Example
 ```yaml
@@ -205,6 +211,21 @@ backtest:
 ```
 
 Custom strategy mode is allowed when strategy plugins are configured (`plugin_dirs` or `plugins`).
+
+### Data Adapter Plugin Example
+```yaml
+data:
+  adapter: my_adapter
+  adapter_auto_discover: true
+  adapter_plugin_dirs:
+    - plugins/data_adapters
+  adapter_plugin_on_error: raise
+```
+
+Plugin module can expose:
+- `DATA_ADAPTER_REGISTRY` dict
+- `get_data_adapter_registry()`
+- or `prepare_<name>_panel(config)` function
 
 ## Typical Report Output Tree
 ```text
