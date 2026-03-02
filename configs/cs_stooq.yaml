@@ -1,31 +1,48 @@
+# 截面因子研究配置（Stooq 公共数据）
+# 目标：在不依赖私有数据的前提下，验证真实数据端到端流程。
+
 run:
   factor_scope: cs
   eval_axis: cross_section
   standardization: cs_rank
+  config_mode: warn
+  leakage_guard_mode: strict
+  stop_after: research
+  fail_on_autocorrect: false
 
 data:
-  mode: panel
   adapter: stooq
+  mode: panel
+
+  # 股票列表可按需扩展；也可通过 --set 临时覆盖
   symbols: [aapl, msft, googl, amzn]
-  start_date: '2022-01-01'
+  start_date: "2022-01-01"
   end_date: null
   request_timeout_sec: 20
   min_rows_per_asset: 30
+
   fields_required: [date, asset, close, volume]
   sanitize: true
   duplicate_policy: last
 
+  adapter_auto_discover: false
+  adapter_plugin_dirs: []
+  adapter_plugins: []
+  adapter_plugin_on_error: warn_skip
+
 factor:
   names: [momentum_20, volatility_20]
-  on_missing: raise
+  on_missing: warn_skip
+
   auto_discover: false
   plugin_dirs: []
   plugins: []
-  plugin_on_error: raise
+  plugin_on_error: warn_skip
+
   expressions: {}
-  expression_on_error: raise
+  expression_on_error: warn_skip
   combinations: []
-  combination_on_error: raise
+  combination_on_error: warn_skip
 
 research:
   horizons: [1, 5, 10, 20]
@@ -34,31 +51,46 @@ research:
   annualization_days: 252
   missing_policy: drop
   preprocess_steps: [winsorize, standardize]
+
   transform_auto_discover: false
   transform_plugin_dirs: []
   transform_plugins: []
-  transform_plugin_on_error: raise
+  transform_plugin_on_error: warn_skip
   custom_transforms: []
+
   winsorize:
     enabled: true
     method: quantile
     lower_q: 0.01
     upper_q: 0.99
     mad_scale: 5.0
+
   neutralize:
     enabled: false
     mode: none
 
 backtest:
+  # 公共样本默认先做研究，不默认回测
   enabled: false
   strategy:
     mode: longshort
+    long_short_quantile: 0.2
+    rebalance_every: 1
+    weight_scheme: equal
     auto_discover: false
     plugin_dirs: []
     plugins: []
-    plugin_on_error: raise
+    plugin_on_error: warn_skip
+
   commission_bps: 3.0
   slippage_bps: 2.0
   leverage: 1.0
   execution_delay_days: 1
   execution_price_col: close
+
+  max_turnover: null
+  max_abs_weight: null
+  max_gross_exposure: null
+  max_net_exposure: null
+  enforce_industry_neutral: false
+  industry_col: industry

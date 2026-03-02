@@ -1,0 +1,84 @@
+# 时序因子研究配置（单资产 synthetic）
+# 目标：验证 TS 因子流程、滞后分析与基础回测。
+
+run:
+  factor_scope: ts
+  eval_axis: time
+  # ts_rolling_zscore / zscore / none
+  standardization: ts_rolling_zscore
+  config_mode: warn
+  leakage_guard_mode: strict
+  stop_after: backtest
+  fail_on_autocorrect: false
+
+data:
+  adapter: synthetic
+  mode: single_asset
+  fields_required: [date, close]
+  sanitize: true
+  duplicate_policy: last
+
+  adapter_auto_discover: false
+  adapter_plugin_dirs: []
+  adapter_plugins: []
+  adapter_plugin_on_error: warn_skip
+
+  synthetic:
+    n_assets: 1
+    n_days: 420
+    seed: 2026
+    start_date: "2020-01-01"
+
+factor:
+  names: [momentum_20, volatility_20]
+  on_missing: warn_skip
+
+  auto_discover: false
+  plugin_dirs: []
+  plugins: []
+  plugin_on_error: warn_skip
+
+  expressions: {}
+  expression_on_error: warn_skip
+  combinations: []
+  combination_on_error: warn_skip
+
+research:
+  horizons: [1, 5, 10, 20]
+  quantiles: 5
+  ic_rolling_window: 30
+  annualization_days: 252
+
+  # TS 专用参数
+  ts_standardize_window: 60
+  ts_quantile_lookback: 80
+  ts_signal_lags: [0, 1, 2, 5, 10]
+
+  transform_auto_discover: false
+  transform_plugin_dirs: []
+  transform_plugins: []
+  transform_plugin_on_error: warn_skip
+  custom_transforms: []
+
+backtest:
+  enabled: true
+  strategy:
+    mode: sign
+    sign_threshold: 0.0
+    auto_discover: false
+    plugin_dirs: []
+    plugins: []
+    plugin_on_error: warn_skip
+
+  commission_bps: 2.0
+  slippage_bps: 1.0
+  leverage: 1.0
+  execution_delay_days: 1
+  execution_price_col: close
+
+  max_turnover: null
+  max_abs_weight: null
+  max_gross_exposure: null
+  max_net_exposure: null
+  enforce_industry_neutral: false
+  industry_col: industry
