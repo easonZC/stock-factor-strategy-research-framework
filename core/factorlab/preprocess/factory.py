@@ -152,10 +152,11 @@ def _merge_registry(
     out = dict(base)
     for name, fn in incoming.items():
         if name in out:
-            msg = f"Transform '{name}' already registered; override by plugin source: {source}"
+            msg = f"Transform '{name}' already registered; plugin source={source}"
             if on_error == "raise":
                 raise ValueError(msg)
             LOGGER.warning(msg)
+            continue
         out[name] = fn
     return out
 

@@ -34,6 +34,22 @@ class SimpleReversalFactor(Factor):
     return path
 
 
+def _write_duplicate_factor_plugin(plugin_dir: Path) -> Path:
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    path = plugin_dir / "dup_factor.py"
+    path.write_text(
+        """
+from factorlab.factors.simple import MomentumFactor
+
+FACTOR_REGISTRY = {
+    "momentum_20": lambda: MomentumFactor(name="momentum_20", lookback=2)
+}
+""".strip(),
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_build_factor_registry_with_plugin_dir(tmp_path: Path) -> None:
     plugin_dir = tmp_path / "plugins"
     _write_plugin_file(plugin_dir)
@@ -45,6 +61,15 @@ def test_build_factor_registry_with_plugin_dir(tmp_path: Path) -> None:
     out = apply_factors(panel, ["simple_reversal"], inplace=False, registry=registry)
     assert "simple_reversal" in out.columns
     assert out["simple_reversal"].notna().mean() > 0.5
+
+
+def test_build_factor_registry_warn_skip_keeps_builtin_on_duplicate(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    _write_duplicate_factor_plugin(plugin_dir)
+
+    registry = build_factor_registry(plugin_dirs=[plugin_dir], on_plugin_error="warn_skip")
+    momentum = registry["momentum_20"]()
+    assert int(getattr(momentum, "lookback")) == 20
 
 
 def test_run_from_config_with_plugin_auto_discovery(tmp_path: Path) -> None:
