@@ -1814,6 +1814,22 @@ def _build_sign_weights(score_df: pd.DataFrame, threshold: float = 0.0) -> pd.Da
     return out
 
 
+def _build_unique_slug_map(names: list[str], default: str = "item") -> dict[str, str]:
+    """为任意名称列表生成去重后的安全 slug 映射。"""
+    used: set[str] = set()
+    mapping: dict[str, str] = {}
+    for raw in names:
+        base = safe_slug(raw, default=default)
+        candidate = base
+        seq = 2
+        while candidate in used:
+            candidate = f"{base}_{seq}"
+            seq += 1
+        used.add(candidate)
+        mapping[raw] = candidate
+    return mapping
+
+
 def _run_optional_backtest(
     panel: pd.DataFrame,
     factors: list[str],
@@ -1855,6 +1871,7 @@ def _run_optional_backtest(
     if back_cfg["strategy_mode"] != "sign":
         strategy = _build_strategy(back_cfg, strategy_registry=strategy_registry)
 
+    factor_slug_map = _build_unique_slug_map(factors, default="factor")
     rows: list[dict[str, Any]] = []
     for fac in factors:
         score_df = panel[["date", "asset", fac]].rename(columns={fac: "score"})
@@ -1865,7 +1882,7 @@ def _run_optional_backtest(
             weights = strategy.generate_weights(score_df)
 
         res = run_backtest(panel=panel, weights=weights, config=bt_cfg)
-        fac_dir = bt_dir / safe_slug(fac, default="factor")
+        fac_dir = bt_dir / factor_slug_map[fac]
         fac_dir.mkdir(parents=True, exist_ok=True)
         weights.to_csv(fac_dir / "weights.csv", index=False)
         res.daily.to_csv(fac_dir / "daily.csv", index=False)

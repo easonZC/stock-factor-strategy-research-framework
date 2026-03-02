@@ -375,3 +375,43 @@ def test_run_from_config_sanitizes_factor_output_paths(tmp_path) -> None:
     assert result.index_html.exists()
     # 若目录拼接存在路径穿越，会在 out_dir 外生成目录；这里确保不会发生。
     assert not (tmp_path / "evil_factor").exists()
+
+
+def test_run_from_config_backtest_dirs_use_collision_safe_slugs(tmp_path) -> None:
+    fac_a = "alpha beta"
+    fac_b = "alpha_beta"
+    cfg = {
+        "run": {"factor_scope": "cs", "eval_axis": "cross_section", "standardization": "cs_zscore"},
+        "data": {
+            "mode": "panel",
+            "adapter": "synthetic",
+            "fields_required": ["date", "asset", "close", "volume", "mkt_cap", "industry"],
+            "synthetic": {"n_assets": 8, "n_days": 150, "seed": 911, "start_date": "2020-01-01"},
+        },
+        "factor": {
+            "names": [fac_a, fac_b],
+            "on_missing": "raise",
+            "expressions": {
+                fac_a: "momentum_20 - volatility_20",
+                fac_b: "volatility_20 - momentum_20",
+            },
+            "expression_on_error": "raise",
+        },
+        "research": {
+            "horizons": [1, 5],
+            "quantiles": 3,
+            "ic_rolling_window": 20,
+            "winsorize": {"enabled": True, "method": "quantile"},
+            "neutralize": {"enabled": False, "mode": "none"},
+        },
+        "backtest": {"enabled": True, "strategy": {"mode": "sign"}},
+    }
+    out_dir = tmp_path / "out_backtest_slug"
+    result = run_from_config(config=cfg, out_dir=out_dir)
+    assert result.backtest_summary_csv is not None and result.backtest_summary_csv.exists()
+    backtest_root = out_dir / "backtest"
+    dirs = sorted([p.name for p in backtest_root.iterdir() if p.is_dir()])
+    assert len(dirs) == 2
+    assert len(set(dirs)) == 2
+    assert "alpha_beta" in dirs
+    assert "alpha_beta_2" in dirs
