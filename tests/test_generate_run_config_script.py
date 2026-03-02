@@ -35,6 +35,8 @@ def test_generate_run_config_script_smoke(tmp_path: Path) -> None:
     assert cfg["research"]["quantiles"] == 7
     assert cfg["factor"]["on_missing"] == "warn_skip"
     assert cfg["factor"]["combinations"] == []
+    assert cfg["research"]["transform_auto_discover"] is False
+    assert cfg["research"]["custom_transforms"] == []
 
 
 def test_generate_run_config_supports_stooq_adapter(tmp_path: Path) -> None:

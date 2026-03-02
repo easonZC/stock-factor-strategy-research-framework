@@ -84,6 +84,11 @@ def _base_research(scope: str) -> dict[str, Any]:
             "ic_rolling_window": 20,
             "missing_policy": "drop",
             "preprocess_steps": ["winsorize", "standardize", "neutralize"],
+            "transform_auto_discover": False,
+            "transform_plugin_dirs": [],
+            "transform_plugins": [],
+            "transform_plugin_on_error": "raise",
+            "custom_transforms": [],
             "winsorize": {
                 "enabled": True,
                 "method": "quantile",
@@ -102,6 +107,11 @@ def _base_research(scope: str) -> dict[str, Any]:
         "ic_rolling_window": 30,
         "ts_standardize_window": 60,
         "ts_quantile_lookback": 80,
+        "transform_auto_discover": False,
+        "transform_plugin_dirs": [],
+        "transform_plugins": [],
+        "transform_plugin_on_error": "raise",
+        "custom_transforms": [],
     }
 
 
@@ -165,6 +175,7 @@ def parse_args() -> argparse.Namespace:
             "  python apps/generate_run_config.py --scope cs --adapter synthetic --out configs/generated_cs.yaml\n"
             "  python apps/generate_run_config.py --scope cs --adapter parquet --set data.path=data/panel.parquet --set factor.on_missing=warn_skip --out configs/generated_cs_parquet.yaml\n"
             "  python apps/generate_run_config.py --scope ts --factors momentum_20,volatility_20 --out configs/generated_ts.yaml\n"
+            "  python apps/generate_run_config.py --scope cs --set research.custom_transforms='[{\"name\":\"clip\",\"kwargs\":{\"lower\":-4,\"upper\":4}}]' --out configs/generated_cs_custom.yaml\n"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )

@@ -45,3 +45,12 @@ This framework enforces conservative preprocessing defaults for factor research:
   - default standardization: `cs_zscore`
   - evaluation axis: `cross_section`
   - optional per-date winsorization and size/industry neutralization.
+
+8. Custom transform plugins
+- Config-driven custom transforms are supported via:
+  - `research.transform_auto_discover`
+  - `research.transform_plugin_dirs` / `research.transform_plugins`
+  - `research.custom_transforms` list
+- Each transform callable must return a `Series` aligned to panel rows.
+- Per-item failure policy is explicit: `on_error: raise|warn_skip`.
+- Built-in transforms include `clip`, `signed_log1p`, `ts_rolling_zscore`, `cs_rank`, `cs_zscore`.

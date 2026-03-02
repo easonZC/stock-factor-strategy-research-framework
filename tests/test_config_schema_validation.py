@@ -117,3 +117,17 @@ def test_validate_schema_synthetic_rejects_small_n_days() -> None:
     cfg["data"]["synthetic"]["n_days"] = 10
     with pytest.raises(ValueError, match="data.synthetic.n_days"):
         validate_run_config_schema(cfg, strict=True)
+
+
+def test_validate_schema_rejects_bad_transform_plugin_on_error() -> None:
+    cfg = _valid_cfg()
+    cfg["research"]["transform_plugin_on_error"] = "ignore"
+    with pytest.raises(ValueError, match="research.transform_plugin_on_error"):
+        validate_run_config_schema(cfg, strict=True)
+
+
+def test_validate_schema_rejects_bad_custom_transform_format() -> None:
+    cfg = _valid_cfg()
+    cfg["research"]["custom_transforms"] = [{"name": "x", "kwargs": "not_a_dict"}]
+    with pytest.raises(ValueError, match="research.custom_transforms\\[x\\].kwargs"):
+        validate_run_config_schema(cfg, strict=True)

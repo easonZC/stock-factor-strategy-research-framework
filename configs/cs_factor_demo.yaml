@@ -32,6 +32,11 @@ research:
   ic_rolling_window: 20
   missing_policy: drop
   preprocess_steps: [winsorize, standardize, neutralize]
+  transform_auto_discover: false
+  transform_plugin_dirs: []
+  transform_plugins: []
+  transform_plugin_on_error: raise
+  custom_transforms: []
   winsorize:
     enabled: true
     method: quantile

@@ -38,6 +38,7 @@ from factorlab.factors import (
     extract_expression_dependencies,
     normalize_factor_combinations,
 )
+from factorlab.preprocess import build_transform_registry
 from factorlab.research import FactorResearchPipeline, TSResearchConfig, TimeSeriesFactorResearchPipeline
 from factorlab.strategies import (
     FlexibleLongShortStrategy,
@@ -320,6 +321,38 @@ def _normalize_factor_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _normalize_custom_transforms(raw: Any) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for entry in _as_list(raw):
+        if isinstance(entry, str):
+            name = entry.strip()
+            if not name:
+                continue
+            out.append({"name": name, "kwargs": {}, "on_error": "raise"})
+            continue
+        if isinstance(entry, dict):
+            name = str(entry.get("name", "")).strip()
+            if not name:
+                LOGGER.warning("Ignore custom transform without name: %r", entry)
+                continue
+            kwargs_raw = entry.get("kwargs", {})
+            if not isinstance(kwargs_raw, dict):
+                LOGGER.warning("Ignore custom transform '%s': kwargs must be a dict.", name)
+                continue
+            on_error = str(entry.get("on_error", "raise")).strip().lower()
+            if on_error not in {"raise", "warn_skip"}:
+                LOGGER.warning(
+                    "Invalid custom transform on_error='%s' for '%s'. Use 'raise'.",
+                    on_error,
+                    name,
+                )
+                on_error = "raise"
+            out.append({"name": name, "kwargs": kwargs_raw, "on_error": on_error})
+            continue
+        LOGGER.warning("Ignore unsupported custom transform entry type: %s", type(entry))
+    return out
+
+
 def _normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str, Any]:
     raw = _as_dict(cfg.get("research"))
     horizons_raw = _as_list(raw.get("horizons"))
@@ -356,6 +389,22 @@ def _normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str
     if scope == "cs" and not preprocess_steps:
         preprocess_steps = default_steps.copy()
 
+    transform_plugin_dirs = [
+        str(x).strip() for x in _as_list(raw.get("transform_plugin_dirs")) if str(x).strip()
+    ]
+    transform_plugins = [x for x in _as_list(raw.get("transform_plugins")) if x is not None and x != ""]
+    transform_auto_discover = _to_bool(
+        raw.get("transform_auto_discover"),
+        bool(transform_plugin_dirs),
+    )
+    transform_plugin_on_error = str(raw.get("transform_plugin_on_error", "raise")).strip().lower()
+    if transform_plugin_on_error not in {"raise", "warn_skip"}:
+        LOGGER.warning(
+            "Invalid research.transform_plugin_on_error='%s'. Use 'raise'.",
+            transform_plugin_on_error,
+        )
+        transform_plugin_on_error = "raise"
+
     out = {
         "horizons": horizons,
         "quantiles": max(2, _to_int(raw.get("quantiles"), 5)),
@@ -364,6 +413,11 @@ def _normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str
         "ts_quantile_lookback": max(10, _to_int(raw.get("ts_quantile_lookback"), 60)),
         "missing_policy": missing_policy,
         "preprocess_steps": preprocess_steps,
+        "transform_auto_discover": transform_auto_discover,
+        "transform_plugin_dirs": transform_plugin_dirs,
+        "transform_plugins": transform_plugins,
+        "transform_plugin_on_error": transform_plugin_on_error,
+        "custom_transforms": _normalize_custom_transforms(raw.get("custom_transforms")),
     }
     if scope == "cs":
         out["winsorize"] = _as_dict(raw.get("winsorize"))
@@ -728,6 +782,33 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
             errors.append(f"research.preprocess_steps: unsupported step '{step}'.")
             break
 
+    transform_plugin_on_error = str(research_cfg.get("transform_plugin_on_error", "raise")).strip().lower()
+    if transform_plugin_on_error not in {"raise", "warn_skip"}:
+        errors.append("research.transform_plugin_on_error: must be one of ['raise', 'warn_skip'].")
+
+    custom_transforms = _as_list(research_cfg.get("custom_transforms"))
+    for entry in custom_transforms:
+        if isinstance(entry, str):
+            if not entry.strip():
+                errors.append("research.custom_transforms: transform name string cannot be empty.")
+                break
+            continue
+        if not isinstance(entry, dict):
+            errors.append("research.custom_transforms: each entry must be string or object.")
+            break
+        name = str(entry.get("name", "")).strip()
+        if not name:
+            errors.append("research.custom_transforms: object entry requires non-empty 'name'.")
+            break
+        kwargs = entry.get("kwargs")
+        if kwargs is not None and not isinstance(kwargs, dict):
+            errors.append(f"research.custom_transforms[{name}].kwargs: must be an object.")
+            break
+        on_error = str(entry.get("on_error", "raise")).strip().lower()
+        if on_error not in {"raise", "warn_skip"}:
+            errors.append(f"research.custom_transforms[{name}].on_error: must be 'raise' or 'warn_skip'.")
+            break
+
     back_cfg = _as_dict(cfg.get("backtest"))
     strategy_cfg = _as_dict(back_cfg.get("strategy"))
     mode_val = str(strategy_cfg.get("mode", "")).strip().lower()
@@ -978,6 +1059,85 @@ def _compute_factors(
     return out, computable, selected
 
 
+def _call_transform_fn(fn: Any, panel: pd.DataFrame, factor_col: str, kwargs: dict[str, Any]) -> pd.Series:
+    try:
+        value = fn(panel=panel, factor_col=factor_col, **kwargs)
+    except TypeError:
+        value = fn(panel, factor_col, **kwargs)
+
+    if isinstance(value, pd.DataFrame):
+        if value.shape[1] != 1:
+            raise TypeError(
+                f"Transform output for '{factor_col}' must be a Series or single-column DataFrame, got shape={value.shape}."
+            )
+        value = value.iloc[:, 0]
+
+    if not isinstance(value, pd.Series):
+        if isinstance(value, np.ndarray):
+            value = pd.Series(value, index=panel.index, dtype=float)
+        else:
+            raise TypeError(f"Transform output for '{factor_col}' must be a pandas Series, got {type(value)}.")
+
+    if len(value) != len(panel):
+        raise ValueError(
+            f"Transform output length mismatch for '{factor_col}': expected {len(panel)} rows, got {len(value)}."
+        )
+    return value.reindex(panel.index)
+
+
+def _apply_custom_transforms(
+    panel: pd.DataFrame,
+    factor_names: list[str],
+    transform_specs: list[dict[str, Any]],
+    transform_registry: dict[str, Any],
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    out = panel.copy()
+    applied: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+
+    for fac in factor_names:
+        if fac not in out.columns:
+            errors.append(
+                {
+                    "factor": fac,
+                    "transform": None,
+                    "error": "factor column missing on panel before transform stage",
+                }
+            )
+            continue
+
+        for spec in transform_specs:
+            name = str(spec.get("name", "")).strip()
+            kwargs = dict(spec.get("kwargs", {}) or {})
+            on_error = str(spec.get("on_error", "raise")).strip().lower()
+            fn = transform_registry.get(name)
+            if fn is None:
+                msg = f"custom transform '{name}' is not registered"
+                if on_error == "warn_skip":
+                    LOGGER.warning("Skip transform for factor '%s': %s", fac, msg)
+                    skipped.append({"factor": fac, "transform": name, "reason": msg})
+                    continue
+                raise KeyError(msg)
+            try:
+                out[fac] = _call_transform_fn(fn=fn, panel=out, factor_col=fac, kwargs=kwargs)
+                applied.append({"factor": fac, "transform": name, "kwargs": kwargs})
+            except Exception as exc:
+                msg = f"{type(exc).__name__}: {exc}"
+                if on_error == "warn_skip":
+                    LOGGER.warning(
+                        "Skip transform '%s' for factor '%s' due to on_error=warn_skip: %s",
+                        name,
+                        fac,
+                        msg,
+                    )
+                    skipped.append({"factor": fac, "transform": name, "reason": msg})
+                    continue
+                raise
+
+    return out, {"applied": applied, "skipped": skipped, "errors": errors}
+
+
 def _build_strategy(back_cfg: dict[str, Any], strategy_registry: dict[str, Any]) -> Strategy:
     mode = back_cfg["strategy_mode"]
     if mode == "topk":
@@ -1146,6 +1306,15 @@ def run_from_config(
             plugin_specs=fac_cfg["plugins"],
             on_plugin_error=fac_cfg["plugin_on_error"],
         )
+    with timed_stage("build_transform_registry", timings=timings, logger_name="factorlab.workflows.config_runner"):
+        transform_registry = build_transform_registry(
+            plugin_dirs=(
+                research_cfg["transform_plugin_dirs"] if research_cfg["transform_auto_discover"] else []
+            ),
+            plugin_specs=research_cfg["transform_plugins"],
+            on_plugin_error=research_cfg["transform_plugin_on_error"],
+            include_defaults=True,
+        )
     requested_factors = list(fac_cfg["names"])
     expressions = dict(fac_cfg["expressions"])
     combinations = list(fac_cfg["combinations"])
@@ -1218,6 +1387,16 @@ def run_from_config(
     if scope_cfg["factor_scope"] == "cs" and universe_cfg["enabled"]:
         with timed_stage("universe_filter", timings=timings, logger_name="factorlab.workflows.config_runner"):
             panel, universe_report = apply_universe_filter(panel, config=universe_cfg["config"])
+
+    custom_transform_report: dict[str, Any] = {"applied": [], "skipped": [], "errors": []}
+    if research_cfg["custom_transforms"]:
+        with timed_stage("custom_transforms", timings=timings, logger_name="factorlab.workflows.config_runner"):
+            panel, custom_transform_report = _apply_custom_transforms(
+                panel=panel,
+                factor_names=effective_factors,
+                transform_specs=research_cfg["custom_transforms"],
+                transform_registry=transform_registry,
+            )
 
     panel = panel.sort_values(["date", "asset"]).reset_index(drop=True)
     if panel.empty:
@@ -1322,7 +1501,18 @@ def run_from_config(
                 "registry_size": len(factor_registry),
             },
         },
-        "research": research_cfg,
+        "research": {
+            "config": research_cfg,
+            "custom_transform_report": custom_transform_report,
+            "transform_plugin_config": {
+                "auto_discover": research_cfg["transform_auto_discover"],
+                "plugin_dirs": research_cfg["transform_plugin_dirs"],
+                "plugins": research_cfg["transform_plugins"],
+                "plugin_on_error": research_cfg["transform_plugin_on_error"],
+                "registry_size": len(transform_registry),
+                "registry_transforms": sorted(transform_registry.keys()),
+            },
+        },
         "schema_warnings": schema_warnings,
         "universe_filter": {
             "enabled": universe_cfg["enabled"],

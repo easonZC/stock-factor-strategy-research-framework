@@ -25,6 +25,11 @@ research:
   ic_rolling_window: 30
   ts_standardize_window: 60
   ts_quantile_lookback: 80
+  transform_auto_discover: false
+  transform_plugin_dirs: []
+  transform_plugins: []
+  transform_plugin_on_error: raise
+  custom_transforms: []
 
 backtest:
   enabled: true

@@ -235,6 +235,35 @@ Reference templates:
 - `data.load_report.adapter_load_seconds`
 - `data.load_report.panel_profile` (rows/assets/date-range/columns/source)
 
+### Custom Transform Plugin Example
+```yaml
+research:
+  transform_auto_discover: true
+  transform_plugin_dirs:
+    - examples/plugins/transforms
+  transform_plugin_on_error: raise
+  custom_transforms:
+    - name: robust_clip
+      kwargs:
+        lower_q: 0.02
+        upper_q: 0.98
+    - name: signed_log
+      on_error: warn_skip
+```
+
+Transform plugin module can expose:
+- `TRANSFORM_REGISTRY` dict
+- `get_transform_registry()`
+- or functions `transform_<name>(panel, factor_col, **kwargs)`
+
+Reference templates:
+- `examples/plugins/transforms/README.md`
+- `examples/plugins/transforms/custom_transforms.py`
+
+`run_meta.json` includes transform execution details:
+- `research.custom_transform_report`
+- `research.transform_plugin_config`
+
 ## Typical Report Output Tree
 ```text
 outputs/research/factor/panel_report/

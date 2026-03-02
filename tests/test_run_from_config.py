@@ -63,6 +63,7 @@ def test_run_from_config_cs_smoke(tmp_path) -> None:
     assert "warning_summary" in meta
     assert "panel_profile" in meta["data"]["load_report"]
     assert "adapter_load_seconds" in meta["data"]["load_report"]
+    assert "transform_plugin_config" in meta["research"]
 
 
 def test_run_from_config_ts_smoke(tmp_path) -> None:
@@ -112,6 +113,7 @@ def test_run_from_config_ts_smoke(tmp_path) -> None:
     assert "warning_summary" in meta
     assert "panel_profile" in meta["data"]["load_report"]
     assert "adapter_load_seconds" in meta["data"]["load_report"]
+    assert "custom_transform_report" in meta["research"]
 
 
 def test_run_from_config_warn_skip_factor_and_flexible_preprocess(tmp_path) -> None:

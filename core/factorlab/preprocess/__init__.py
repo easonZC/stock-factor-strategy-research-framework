@@ -1,5 +1,11 @@
-﻿"""Preprocessing package exports."""
+"""Preprocessing package exports."""
 
+from .factory import (
+    build_transform_registry,
+    default_transform_registry,
+    discover_transform_registry,
+    load_transform_plugins,
+)
 from .transforms import (
     apply_cs_standardize,
     apply_winsorize,
@@ -12,6 +18,10 @@ from .transforms import (
 )
 
 __all__ = [
+    "build_transform_registry",
+    "default_transform_registry",
+    "discover_transform_registry",
+    "load_transform_plugins",
     "apply_winsorize",
     "apply_cs_standardize",
     "cs_robust_zscore",

@@ -26,6 +26,7 @@ def parse_args() -> argparse.Namespace:
             "Examples:\n"
             "  python apps/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/research/factor/cs\n"
             "  python apps/run_from_config.py --config base.yaml --config local.yaml --set research.horizons='[1,5,10]' --out outputs/research/factor/merged\n"
+            "  python apps/run_from_config.py --config configs/cs_factor_demo.yaml --set research.transform_auto_discover=true --set research.transform_plugin_dirs='[\"examples/plugins/transforms\"]' --set research.custom_transforms='[{\"name\":\"robust_clip\",\"kwargs\":{\"lower_q\":0.02,\"upper_q\":0.98}}]' --out outputs/research/factor/cs_custom\n"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
