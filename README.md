@@ -86,6 +86,23 @@ python apps/run_from_config.py --config configs/cs_factor_demo.yaml --out output
 python apps/run_from_config.py --config configs/ts_factor_demo.yaml --out outputs/research/factor/config_ts
 ```
 
+### Multi-config merge + temporary overrides
+```bash
+python apps/run_from_config.py \
+  --config configs/cs_factor_demo.yaml \
+  --config configs/local_override.yaml \
+  --set research.horizons='[1,5,10]' \
+  --set research.quantiles=10 \
+  --out outputs/research/factor/config_cs_merged \
+  --save-effective-config
+```
+
+### Generate config template (recommended)
+```bash
+python apps/generate_run_config.py --scope cs --adapter synthetic --out configs/generated_cs.yaml
+python apps/generate_run_config.py --scope ts --adapter parquet --set data.path=data/panel.parquet --out configs/generated_ts.yaml
+```
+
 ### Required config keys
 - `run.factor_scope`: `cs` or `ts`
 - `run.eval_axis`: `cross_section` or `time`
@@ -95,6 +112,7 @@ python apps/run_from_config.py --config configs/ts_factor_demo.yaml --out output
 - `factor.on_missing`: `raise` (strict) or `warn_skip` (skip unresolved factors with warnings)
 - `research.missing_policy`: `drop|fill_zero|ffill_by_asset|cs_median_by_date|keep`
 - `research.preprocess_steps`: ordered list from `winsorize|standardize|neutralize`
+- CLI `run_from_config` supports repeated `--config` deep-merge and repeated `--set key.path=value` overrides.
 
 ## Typical Report Output Tree
 ```text

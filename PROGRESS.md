@@ -53,6 +53,55 @@ For every complete run, append one new entry at the top of `Run History` with:
 
 ## Run History
 
+### Run 2026-03-01-008
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal: Improve usability with config scaffolding, CLI help quality, and config merge/override support.
+- Changes:
+  - Added config scaffold generator CLI:
+    - `apps/generate_run_config.py`
+    - Supports TS/CS template generation (`--scope`, `--adapter`, `--factors`) and dotted overrides (`--set key=value`).
+  - Added reusable config composition utilities:
+    - `core/factorlab/workflows/config_runner.py`:
+      - `deep_merge_dict`
+      - `apply_config_override`
+      - `compose_run_config`
+    - Exported via `core/factorlab/workflows/__init__.py`.
+  - Upgraded config-run CLI:
+    - `apps/run_from_config.py` now supports:
+      - repeated `--config` for deep-merge (later file overrides earlier file),
+      - repeated `--set` for dotted-path overrides,
+      - `--save-effective-config` to persist final merged config.
+  - Enhanced help/usage examples (`--help`) across app entrypoints:
+    - `apps/prepare_data.py`
+    - `apps/run_factor_research.py`
+    - `apps/run_factor_research_synthetic.py`
+    - `apps/run_strategy_backtest_synthetic.py`
+    - `apps/run_model_factor_benchmark.py`
+    - `apps/train_model_factor.py`
+    - `apps/run_from_config.py`
+  - Added tests for config composition and scaffold generator:
+    - `tests/test_config_compose.py`
+    - `tests/test_generate_run_config_script.py`
+  - Updated README with:
+    - multi-config merge + temporary override examples,
+    - config template generation commands.
+- Validation commands:
+  - `python3 -m ruff check core apps tests`
+  - `python3 -m pytest -q`
+  - `python3 apps/generate_run_config.py --scope cs --adapter synthetic --set research.quantiles=8 --set factor.on_missing=warn_skip --out configs/generated_cs_quick.yaml`
+  - `python3 apps/run_from_config.py --config configs/cs_factor_demo.yaml --set research.horizons='[1,5]' --set research.quantiles=4 --out outputs/research/factor/config_cs_override_check --save-effective-config`
+  - `find configs -maxdepth 1 -type f -name 'generated_cs_quick.yaml' -delete`
+- Validation summary:
+  - Lint passed.
+  - Tests passed: `17 passed`.
+  - Config scaffold generation, config override run, and report output generation all completed successfully.
+- Git actions:
+  - Local commit: pending
+  - Push: pending
+- Next run direction:
+  - Implement factor plugin auto-discovery (registry extension via module/class paths) for faster custom factor integration.
+  - Add stronger typed config schema validation (friendly error reporting before runtime).
+
 ### Run 2026-03-01-007
 - Time: 2026-03-01 (America/Los_Angeles)
 - Goal: Improve research flexibility by relaxing factor/run interfaces and expanding configurable data preprocessing policies.

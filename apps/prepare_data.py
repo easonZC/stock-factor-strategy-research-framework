@@ -16,7 +16,15 @@ from factorlab.data import prepare_sina_panel, write_panel
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Prepare panel data via adapter")
+    parser = argparse.ArgumentParser(
+        description="Prepare panel data via adapter",
+        epilog=(
+            "Examples:\n"
+            "  python apps/prepare_data.py --adapter sina --data-dir /stock_sina_update --out data/panel.parquet\n"
+            "  python apps/prepare_data.py --adapter sina --data-dir /stock_sina_update --out data/panel.csv\n"
+        ),
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
     parser.add_argument("--adapter", required=True, choices=["sina"], help="Adapter type")
     parser.add_argument("--data-dir", required=True, help="Input data folder")
     parser.add_argument("--out", required=True, help="Output panel path (.parquet/.csv)")
@@ -34,4 +42,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

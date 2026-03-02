@@ -21,7 +21,14 @@ from factorlab.strategies import LongShortQuantileStrategy, TopKLongStrategy
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser()
+    p = argparse.ArgumentParser(
+        description="Run synthetic strategy backtest demo.",
+        epilog=(
+            "Examples:\n"
+            "  python apps/run_strategy_backtest_synthetic.py --out outputs/research/strategy/synthetic_backtest\n"
+        ),
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
     p.add_argument(
         "--out",
         default="outputs/research/strategy/synthetic_backtest",

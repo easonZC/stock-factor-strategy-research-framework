@@ -18,7 +18,15 @@ from factorlab.research import FactorResearchPipeline
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run synthetic factor-research report.")
+    parser = argparse.ArgumentParser(
+        description="Run synthetic factor-research report.",
+        epilog=(
+            "Examples:\n"
+            "  python apps/run_factor_research_synthetic.py --out outputs/research/factor/synthetic_report\n"
+            "  python apps/run_factor_research_synthetic.py --assets 80 --days 500 --out outputs/research/factor/synthetic_large\n"
+        ),
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
     parser.add_argument(
         "--out",
         default="outputs/research/factor/synthetic_report",

@@ -19,7 +19,15 @@ LOGGER = get_logger("factorlab.run_model_factor_benchmark")
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Benchmark multiple model factors on one panel.")
+    parser = argparse.ArgumentParser(
+        description="Benchmark multiple model factors on one panel.",
+        epilog=(
+            "Examples:\n"
+            "  python apps/run_model_factor_benchmark.py --panel data/panel.parquet --models lgbm,mlp --out outputs/research/model_factor/benchmark\n"
+            "  python apps/run_model_factor_benchmark.py --panel data/panel.parquet --models ridge,rf --label-horizon 10 --out outputs/research/model_factor/benchmark_h10\n"
+        ),
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
     parser.add_argument("--panel", required=True, help="Panel path (.parquet/.csv)")
     parser.add_argument(
         "--out",

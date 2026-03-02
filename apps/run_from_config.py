@@ -11,23 +11,59 @@ CORE_PATH = ROOT / "core"
 if str(CORE_PATH) not in sys.path:
     sys.path.insert(0, str(CORE_PATH))
 
+import yaml
+
 from factorlab.utils import get_logger  # noqa: E402
-from factorlab.workflows import run_from_config  # noqa: E402
+from factorlab.workflows import compose_run_config, run_from_config  # noqa: E402
 
 LOGGER = get_logger("factorlab.run_from_config")
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run factor pipeline from YAML config.")
-    parser.add_argument("--config", required=True, help="YAML config path")
+    parser = argparse.ArgumentParser(
+        description="Run factor pipeline from YAML config(s).",
+        epilog=(
+            "Examples:\n"
+            "  python apps/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/research/factor/cs\n"
+            "  python apps/run_from_config.py --config base.yaml --config local.yaml --set research.horizons='[1,5,10]' --out outputs/research/factor/merged\n"
+        ),
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    parser.add_argument(
+        "--config",
+        action="append",
+        required=True,
+        help="YAML config path (repeatable). Later files override earlier files.",
+    )
+    parser.add_argument(
+        "--set",
+        dest="overrides",
+        action="append",
+        default=[],
+        help="Override key via dotted path, e.g. research.quantiles=10 (repeatable).",
+    )
     parser.add_argument("--out", required=True, help="Output directory")
+    parser.add_argument(
+        "--save-effective-config",
+        action="store_true",
+        help="Save merged+overridden effective config to <out>/effective_config.yaml.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    effective_cfg = compose_run_config(config_paths=args.config, overrides=args.overrides)
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if args.save_effective_config:
+        (out_dir / "effective_config.yaml").write_text(
+            yaml.safe_dump(effective_cfg, sort_keys=False, allow_unicode=False),
+            encoding="utf-8",
+        )
+
     result = run_from_config(
-        config=args.config,
+        config=effective_cfg,
         out_dir=args.out,
         repo_root=ROOT,
     )

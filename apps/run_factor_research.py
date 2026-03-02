@@ -23,7 +23,15 @@ LOGGER = get_logger("factorlab.run_factor_research")
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run factor research on a panel file.")
+    parser = argparse.ArgumentParser(
+        description="Run factor research on a panel file.",
+        epilog=(
+            "Examples:\n"
+            "  python apps/run_factor_research.py --panel data/panel.parquet --factors momentum_20,volatility_20 --out outputs/research/factor/panel\n"
+            "  python apps/run_factor_research.py --panel data/panel.parquet --standardization cs_robust_zscore --missing-policy cs_median_by_date --preprocess-steps winsorize,standardize --out outputs/research/factor/robust\n"
+        ),
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
     parser.add_argument("--panel", required=True, help="Panel path (.parquet/.csv)")
     parser.add_argument(
         "--factors",

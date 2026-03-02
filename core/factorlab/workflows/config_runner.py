@@ -292,6 +292,67 @@ def load_run_config(path: str | Path) -> dict[str, Any]:
     return payload
 
 
+def deep_merge_dict(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merge dict values from overlay into base and return a new dict."""
+    out = dict(base)
+    for key, val in overlay.items():
+        cur = out.get(key)
+        if isinstance(cur, dict) and isinstance(val, dict):
+            out[key] = deep_merge_dict(cur, val)
+        else:
+            out[key] = val
+    return out
+
+
+def apply_config_override(cfg: dict[str, Any], override: str) -> dict[str, Any]:
+    """Apply one dotted-path override in form `a.b.c=value` and return a new dict."""
+    text = str(override).strip()
+    if "=" not in text:
+        raise ValueError(f"Invalid override '{override}'. Expected format: key.path=value")
+    path_raw, value_raw = text.split("=", 1)
+    path = [x.strip() for x in path_raw.split(".") if x.strip()]
+    if not path:
+        raise ValueError(f"Invalid override '{override}'. Empty key path.")
+    try:
+        value = yaml.safe_load(value_raw)
+    except Exception:
+        value = value_raw
+
+    out = dict(cfg)
+    node: dict[str, Any] = out
+    for seg in path[:-1]:
+        nxt = node.get(seg)
+        if not isinstance(nxt, dict):
+            nxt = {}
+            node[seg] = nxt
+        node = nxt
+    node[path[-1]] = value
+    return out
+
+
+def compose_run_config(
+    config_paths: list[str | Path],
+    overrides: list[str] | None = None,
+) -> dict[str, Any]:
+    """Compose effective run config from multiple yaml files and dotted overrides.
+
+    Merge order:
+    - Start from first config file.
+    - Deep-merge subsequent files from left to right.
+    - Apply overrides in provided order.
+    """
+    if not config_paths:
+        raise ValueError("At least one config path is required.")
+
+    merged = load_run_config(config_paths[0])
+    for path in config_paths[1:]:
+        merged = deep_merge_dict(merged, load_run_config(path))
+
+    for ov in overrides or []:
+        merged = apply_config_override(merged, ov)
+    return merged
+
+
 def _load_data(data_cfg: dict[str, Any], scope_cfg: dict[str, Any]) -> tuple[pd.DataFrame, dict[str, Any]]:
     adapter = data_cfg["adapter"]
     sanitize = bool(data_cfg["sanitize"])
