@@ -25,7 +25,11 @@ LOGGER = get_logger("ssf.run_factor_research")
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run factor research on a panel file.")
     parser.add_argument("--panel", required=True, help="Panel path (.parquet/.csv)")
-    parser.add_argument("--factors", default="size", help="Comma-separated factor names")
+    parser.add_argument(
+        "--factors",
+        default="momentum_20,volatility_20,liquidity_shock",
+        help="Comma-separated factor names",
+    )
     parser.add_argument("--horizons", nargs="+", type=int, default=[1, 5, 10, 20], help="Forward-return horizons")
     parser.add_argument("--out", default="outputs/factor_report", help="Output directory")
     parser.add_argument("--neutralize", choices=["none", "size", "industry", "both"], default="both")
@@ -78,4 +82,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
