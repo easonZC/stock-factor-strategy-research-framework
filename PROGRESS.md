@@ -53,6 +53,67 @@ For every complete run, append one new entry at the top of `Run History` with:
 
 ## Run History
 
+### Run 2026-03-01-016
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal: Continue framework flexibility improvements with configurable custom preprocess transforms (pluginized and config-driven), plus docs/tests polish.
+- Changes:
+  - Added preprocess transform plugin factory:
+    - `core/factorlab/preprocess/factory.py`
+    - supports:
+      - built-ins (`clip`, `signed_log1p`, `ts_rolling_zscore`, `cs_rank`, `cs_zscore`)
+      - plugin directory auto-discovery
+      - explicit plugin specs (`callable_path` or `module + callable`)
+      - strict duplicate/error handling (`raise|warn_skip`)
+  - Exported transform registry APIs:
+    - `core/factorlab/preprocess/__init__.py`
+  - Integrated config-driven custom transform stage into workflow:
+    - `core/factorlab/workflows/config_runner.py`
+    - new research config keys:
+      - `transform_auto_discover`
+      - `transform_plugin_dirs`
+      - `transform_plugins`
+      - `transform_plugin_on_error`
+      - `custom_transforms`
+    - added schema validation for transform config.
+    - added runtime transform execution report into `run_meta.json`:
+      - `research.custom_transform_report`
+      - `research.transform_plugin_config`
+  - Updated config templates and CLI examples:
+    - `apps/generate_run_config.py`
+    - `apps/run_from_config.py`
+    - `configs/cs_factor_demo.yaml`
+    - `configs/ts_factor_demo.yaml`
+    - `configs/cs_stooq_demo.yaml`
+  - Added transform plugin templates:
+    - `examples/plugins/transforms/README.md`
+    - `examples/plugins/transforms/custom_transforms.py`
+  - Documentation updates:
+    - `README.md`
+    - `docs/data_processing.md`
+  - Tests:
+    - Added:
+      - `tests/test_transform_plugins.py`
+    - Updated:
+      - `tests/test_config_schema_validation.py`
+      - `tests/test_generate_run_config_script.py`
+      - `tests/test_run_from_config.py`
+- Validation commands:
+  - `python3 -m ruff check core apps tests`
+  - `python3 -m pytest -q tests/test_transform_plugins.py tests/test_config_schema_validation.py tests/test_generate_run_config_script.py tests/test_run_from_config.py`
+  - `python3 -m pytest -q`
+- Validation summary:
+  - Lint passed.
+  - Targeted tests passed: `22 passed`.
+  - Full test suite passed: `54 passed`.
+- Git actions:
+  - New branch: `feat/transform-plugins-20260301`
+  - Commit: `837f2cd` (`feat(preprocess): add configurable transform plugin stage`)
+  - Push succeeded: `git push -u origin feat/transform-plugins-20260301`
+  - PR created and updated: `https://github.com/easonZC/stock-factor-strategy-research-framework/pull/9`
+- Next run direction:
+  - Add plugin-adapter schema hook interface for custom adapters (optional adapter-side `validate_config` contract).
+  - Add adapter quality summary table into report outputs for easier data intake auditing.
+
 ### Run 2026-03-01-015
 - Time: 2026-03-01 (America/Los_Angeles)
 - Goal: Continue improvements with:
