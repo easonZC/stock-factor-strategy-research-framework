@@ -85,7 +85,8 @@ For every complete run, append one new entry at the top of `Run History` with:
   - Tests passed: `10 passed`.
   - Synthetic/config/strategy runs completed with the new hierarchical output tree.
 - Git actions:
-  - Pending in this run: commit/push this naming+output-structure refinement and update PR #3.
+  - Local commit succeeded: `cf78f89` (`refactor(ux): archive legacy factors and professionalize outputs/scripts`).
+  - Push succeeded: `git push origin refactor/ssf-v2` (PR #3 updated).
 - Next run direction:
   - Continue improving report UX (index sections and navigation) while keeping hierarchical artifact storage.
   - Expand strategy-side report folder conventions for multi-strategy comparative runs.
