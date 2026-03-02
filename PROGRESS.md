@@ -53,6 +53,56 @@ For every complete run, append one new entry at the top of `Run History` with:
 
 ## Run History
 
+### Run 2026-03-01-015
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal: Continue improvements with:
+  - adapter-specific schema fragments,
+  - structured adapter load telemetry,
+  - plugin templates for custom data adapters.
+- Changes:
+  - Adapter-specific schema fragments in config validation:
+    - `core/factorlab/workflows/config_runner.py`
+    - added fragment validation for built-ins:
+      - `synthetic`: `n_assets>=1`, `n_days>=60`, parseable `start_date`
+      - `stooq`: non-empty symbols, parseable dates, `request_timeout_sec>0`, `min_rows_per_asset>0`
+      - `sina`: `min_rows_per_asset>0`
+      - `parquet/csv`: suffix mismatch warning hints
+  - Structured load telemetry for data ingestion:
+    - `core/factorlab/workflows/config_runner.py`
+    - `data.load_report` now includes:
+      - `adapter_load_seconds`
+      - `panel_profile` (`rows`, `assets`, `dates`, `date_min`, `date_max`, `columns`, `source`)
+  - Adapter plugin templates:
+    - `examples/plugins/data_adapters/README.md`
+    - `examples/plugins/data_adapters/mock_feed.py`
+  - Config and docs polish:
+    - `apps/generate_run_config.py` adds `min_rows_per_asset` defaults for `sina/stooq`
+    - `configs/cs_stooq_demo.yaml` adds `min_rows_per_asset`
+    - `README.md` adds template references + `load_report` telemetry notes
+  - Tests:
+    - Added:
+      - `tests/test_warning_governance.py`
+    - Updated:
+      - `tests/test_config_schema_validation.py`
+      - `tests/test_data_adapter_plugins.py`
+      - `tests/test_generate_run_config_script.py`
+      - `tests/test_run_from_config.py`
+- Validation commands:
+  - `python3 -m ruff check core apps tests`
+  - `python3 -m pytest -q`
+- Validation summary:
+  - Lint passed.
+  - Tests passed: `50 passed`.
+- Git actions:
+  - New branch: `feat/data-schema-metrics-20260301`
+  - Commit: `74b2e66` (`feat(config): add adapter schema fragments and load profile metrics`)
+  - Push succeeded: `git push -u origin feat/data-schema-metrics-20260301`
+  - PR created and updated: `https://github.com/easonZC/stock-factor-strategy-research-framework/pull/8`
+- Next run direction:
+  - Add adapter-specific optional schema hooks for plugin adapters.
+  - Add standardized adapter quality report table into `outputs/.../tables`.
+  - Add end-to-end example config using `examples/plugins/data_adapters/mock_feed.py`.
+
 ### Run 2026-03-01-014
 - Time: 2026-03-01 (America/Los_Angeles)
 - Goal: Execute the two remaining improvements:
