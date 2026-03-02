@@ -148,3 +148,25 @@ def plot_group_bar(
     ax.set_title(title)
     ax.set_ylabel(value_col)
     return _save(fig, out_path)
+
+
+def plot_lag_profile(
+    lag_df: pd.DataFrame,
+    out_path: Path,
+    title: str = "Signal Lag IC",
+) -> Path:
+    apply_style()
+    fig, ax = plt.subplots()
+    if lag_df.empty:
+        ax.set_title(title)
+        ax.text(0.5, 0.5, "No data", ha="center", va="center")
+        return _save(fig, out_path)
+    ax.plot(lag_df["lag"], lag_df["ic_mean"], marker="o", label="IC")
+    if "rank_ic_mean" in lag_df.columns:
+        ax.plot(lag_df["lag"], lag_df["rank_ic_mean"], marker="o", label="RankIC")
+    ax.axhline(0.0, color="#777777", linewidth=1.0, alpha=0.6)
+    ax.set_title(title)
+    ax.set_xlabel("Execution Lag (days)")
+    ax.set_ylabel("Mean IC")
+    ax.legend()
+    return _save(fig, out_path)

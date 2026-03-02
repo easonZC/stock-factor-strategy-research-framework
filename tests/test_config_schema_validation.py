@@ -134,6 +134,19 @@ def test_validate_schema_rejects_bad_custom_transform_format() -> None:
         validate_run_config_schema(cfg, strict=True)
 
 
+def test_validate_schema_rejects_bad_ts_signal_lags() -> None:
+    cfg = _valid_cfg()
+    cfg["run"]["factor_scope"] = "ts"
+    cfg["run"]["eval_axis"] = "time"
+    cfg["run"]["standardization"] = "ts_rolling_zscore"
+    cfg["data"]["mode"] = "single_asset"
+    cfg["data"]["fields_required"] = ["date", "close"]
+    cfg["data"]["synthetic"]["n_assets"] = 1
+    cfg["research"]["ts_signal_lags"] = [0, -1, "abc"]
+    with pytest.raises(ValueError, match="research.ts_signal_lags"):
+        validate_run_config_schema(cfg, strict=True)
+
+
 def test_run_from_config_strict_mode_rejects_autocorrect_when_schema_skipped(tmp_path: Path) -> None:
     cfg = _valid_cfg()
     cfg["run"]["config_mode"] = "strict"

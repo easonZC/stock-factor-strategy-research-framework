@@ -94,6 +94,7 @@ def test_run_from_config_ts_smoke(tmp_path) -> None:
             "ic_rolling_window": 20,
             "ts_standardize_window": 50,
             "ts_quantile_lookback": 70,
+            "ts_signal_lags": [0, 1, 3, 5],
         },
         "backtest": {"enabled": True, "strategy": {"mode": "sign", "sign_threshold": 0.0}},
     }
@@ -119,6 +120,8 @@ def test_run_from_config_ts_smoke(tmp_path) -> None:
     assert "adapter_quality_audit_csv" in meta["outputs"]
     assert Path(meta["outputs"]["adapter_quality_audit_csv"]).exists()
     assert "custom_transform_report" in meta["research"]
+    assert meta["research"]["config"]["ts_signal_lags"] == [0, 1, 3, 5]
+    assert (out_dir / "tables" / "factors" / "momentum_20" / "ts" / "signal_lag_ic.csv").exists()
 
 
 def test_run_from_config_warn_skip_factor_and_flexible_preprocess(tmp_path) -> None:

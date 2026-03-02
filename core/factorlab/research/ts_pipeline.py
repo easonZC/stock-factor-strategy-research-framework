@@ -13,6 +13,7 @@ import pandas as pd
 from factorlab.plotting import (
     plot_coverage,
     plot_ic_series,
+    plot_lag_profile,
     plot_quantile_nav,
     plot_turnover,
 )
@@ -57,6 +58,7 @@ class TSResearchConfig:
     ts_standardize_window: int = 60
     ts_quantile_lookback: int = 60
     min_obs_per_asset_for_ic: int = 40
+    ts_signal_lags: list[int] = field(default_factory=lambda: [0, 1, 2, 5, 10])
 
 
 def _zscore_by_asset(df: pd.DataFrame, col: str) -> pd.Series:
@@ -184,6 +186,60 @@ def _compute_time_ic_series(
     return out
 
 
+def _compute_signal_lag_profile(
+    df: pd.DataFrame,
+    factor_col: str,
+    ret_col: str,
+    lags: list[int],
+    window: int,
+    min_obs_per_asset: int,
+) -> pd.DataFrame:
+    rows: list[dict[str, float | int]] = []
+    base = df[["date", "asset", factor_col, ret_col]].sort_values(["asset", "date"]).copy()
+    for lag in sorted({max(0, int(x)) for x in lags}):
+        tmp = base.copy()
+        shifted_col = ret_col
+        if lag > 0:
+            shifted_col = f"{ret_col}_lag_{lag}"
+            tmp[shifted_col] = tmp.groupby("asset")[ret_col].shift(-lag)
+        ic_daily = _compute_time_ic_series(
+            tmp.dropna(subset=[factor_col, shifted_col]),
+            factor_col=factor_col,
+            ret_col=shifted_col,
+            window=window,
+            min_obs_per_asset=min_obs_per_asset,
+        )
+        if ic_daily.empty:
+            rows.append(
+                {
+                    "lag": lag,
+                    "ic_mean": np.nan,
+                    "rank_ic_mean": np.nan,
+                    "icir": np.nan,
+                    "rank_icir": np.nan,
+                    "nw_t_ic": np.nan,
+                    "nw_p_ic": np.nan,
+                    "n_dates": 0,
+                }
+            )
+            continue
+        stats = summarize_ic(ic_daily)
+        nw_t_ic, nw_p_ic = newey_west_tstat(ic_daily["ic"])
+        rows.append(
+            {
+                "lag": lag,
+                "ic_mean": float(stats.get("ic_mean", np.nan)),
+                "rank_ic_mean": float(stats.get("rank_ic_mean", np.nan)),
+                "icir": float(stats.get("icir", np.nan)),
+                "rank_icir": float(stats.get("rank_icir", np.nan)),
+                "nw_t_ic": nw_t_ic,
+                "nw_p_ic": nw_p_ic,
+                "n_dates": int(len(ic_daily)),
+            }
+        )
+    return pd.DataFrame(rows).sort_values("lag").reset_index(drop=True)
+
+
 class TimeSeriesFactorResearchPipeline:
     """生成 TS 因子研究输出（表格、图形、HTML 报告）。"""
 
@@ -274,9 +330,30 @@ class TimeSeriesFactorResearchPipeline:
             q_profile.to_csv(q_profile_path, index=False)
             fac_tables.append(q_profile_path)
 
+            lag_profile = _compute_signal_lag_profile(
+                tmpq.rename(columns={f"{fac}_ts": "factor"}),
+                factor_col="factor",
+                ret_col=primary_ret_col,
+                lags=self.config.ts_signal_lags,
+                window=max(10, int(self.config.ic_rolling_window)),
+                min_obs_per_asset=int(self.config.min_obs_per_asset_for_ic),
+            )
+            lag_profile_path = fac_table_dir / "signal_lag_ic.csv"
+            lag_profile.to_csv(lag_profile_path, index=False)
+            fac_tables.append(lag_profile_path)
+
             ls_t, ls_p = newey_west_tstat(q_daily["long_short"])
             ls_profile_row = q_profile[q_profile["bucket"] == "long_short"]
             ls_profile = ls_profile_row.iloc[0].to_dict() if not ls_profile_row.empty else {}
+            best_lag_row = {}
+            lag_valid = lag_profile[np.isfinite(lag_profile["ic_mean"])] if not lag_profile.empty else pd.DataFrame()
+            if not lag_valid.empty:
+                best_lag_row = lag_valid.sort_values("ic_mean", ascending=False).iloc[0].to_dict()
+            lag0_row = (
+                lag_profile[lag_profile["lag"] == 0].iloc[0].to_dict()
+                if (not lag_profile.empty and (lag_profile["lag"] == 0).any())
+                else {}
+            )
             summary_rows.append(
                 {
                     "factor": fac,
@@ -296,8 +373,14 @@ class TimeSeriesFactorResearchPipeline:
                     "nw_p_long_short": ls_p,
                     "ls_mean_ret": ls_profile.get("mean_ret", np.nan),
                     "ls_sharpe": ls_profile.get("sharpe", np.nan),
+                    "ls_sortino": ls_profile.get("sortino", np.nan),
+                    "ls_calmar": ls_profile.get("calmar", np.nan),
                     "ls_hit_rate": ls_profile.get("hit_rate", np.nan),
                     "ls_max_drawdown": ls_profile.get("max_drawdown", np.nan),
+                    "signal_lag0_ic_mean": lag0_row.get("ic_mean", np.nan),
+                    "signal_lag0_rank_ic_mean": lag0_row.get("rank_ic_mean", np.nan),
+                    "signal_best_lag": best_lag_row.get("lag", np.nan),
+                    "signal_best_lag_ic_mean": best_lag_row.get("ic_mean", np.nan),
                 }
             )
 
@@ -323,6 +406,11 @@ class TimeSeriesFactorResearchPipeline:
                         title=f"{fac} [ts] Time-Quantile Turnover",
                     ),
                     plot_coverage(cov, fac_asset_dir / "coverage.png", title=f"{fac} [ts] Coverage"),
+                    plot_lag_profile(
+                        lag_profile,
+                        fac_asset_dir / "signal_lag_ic.png",
+                        title=f"{fac} [ts] Signal Lag IC",
+                    ),
                 ]
             )
 
@@ -349,6 +437,7 @@ class TimeSeriesFactorResearchPipeline:
                     "standardization": self.config.standardization,
                     "ts_standardize_window": self.config.ts_standardize_window,
                     "ts_quantile_lookback": self.config.ts_quantile_lookback,
+                    "ts_signal_lags": self.config.ts_signal_lags,
                     "factors": factors,
                 },
                 indent=2,

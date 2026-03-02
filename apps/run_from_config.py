@@ -15,7 +15,7 @@ import yaml
 
 from factorlab.ops import OutputRetentionManager, RetentionPolicy  # noqa: E402
 from factorlab.utils import configure_logging, get_logger  # noqa: E402
-from factorlab.workflows import compose_run_config, run_from_config  # noqa: E402
+from factorlab.workflows import compose_run_config, run_from_config, validate_run_config_schema  # noqa: E402
 
 LOGGER = get_logger("factorlab.run_from_config")
 
@@ -27,6 +27,7 @@ def parse_args() -> argparse.Namespace:
             "Examples:\n"
             "  python apps/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/research/factor/cs\n"
             "  python apps/run_from_config.py --config base.yaml --config local.yaml --set research.horizons='[1,5,10]' --out outputs/research/factor/merged\n"
+            "  python apps/run_from_config.py --config configs/cs_factor_demo.yaml --set research.horizons+=20 --set research.horizons-=1 --out outputs/research/factor/cs_horizon_ops\n"
             "  python apps/run_from_config.py --config configs/cs_factor_demo.yaml --set research.transform_auto_discover=true --set research.transform_plugin_dirs='[\"examples/plugins/transforms\"]' --set research.custom_transforms='[{\"name\":\"robust_clip\",\"kwargs\":{\"lower_q\":0.02,\"upper_q\":0.98}}]' --out outputs/research/factor/cs_custom\n"
             "  python apps/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/research/factor/cs --cleanup-old-outputs --cleanup-days 14 --cleanup-keep 30\n"
         ),
@@ -43,7 +44,11 @@ def parse_args() -> argparse.Namespace:
         dest="overrides",
         action="append",
         default=[],
-        help="Override key via dotted path, e.g. research.quantiles=10 (repeatable).",
+        help=(
+            "Override via dotted path (repeatable). "
+            "Supports '=' replace, '+=' append/merge, '-=' remove. "
+            "Examples: research.quantiles=10, research.horizons+=20, research.winsorize-='method'."
+        ),
     )
     parser.add_argument("--out", required=True, help="Output directory")
     parser.add_argument(
@@ -55,6 +60,11 @@ def parse_args() -> argparse.Namespace:
         "--skip-schema-validation",
         action="store_true",
         help="Skip strict pre-validation of config schema before runtime.",
+    )
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Validate merged config and exit without running research/backtest pipeline.",
     )
     parser.add_argument(
         "--log-level",
@@ -107,6 +117,14 @@ def main() -> None:
             yaml.safe_dump(effective_cfg, sort_keys=False, allow_unicode=False),
             encoding="utf-8",
         )
+    if args.validate_only:
+        schema_warnings = validate_run_config_schema(effective_cfg, strict=True)
+        LOGGER.info(
+            "Config validation passed. warnings=%s out=%s",
+            len(schema_warnings),
+            out_dir,
+        )
+        return
 
     result = run_from_config(
         config=effective_cfg,
