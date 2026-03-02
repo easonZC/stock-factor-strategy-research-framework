@@ -32,7 +32,7 @@ jobs:
 
       - name: Synthetic Report Smoke
         run: |
-          python apps/run_factor_research_synthetic.py --out outputs/research/factor/ci_smoke --assets 10 --days 90
+          python apps/run_from_config.py --config configs/cs_factor.yaml --set data.adapter=synthetic --set factor.names='[momentum_20,volatility_20,liquidity_shock]' --set backtest.enabled=false --out outputs/research/factor/ci_smoke
           test -f outputs/research/factor/ci_smoke/index.html
           test -f outputs/research/factor/ci_smoke/tables/summary.csv
           test "$(find outputs/research/factor/ci_smoke/assets -name '*.png' | wc -l)" -ge 6

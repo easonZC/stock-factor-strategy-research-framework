@@ -6,6 +6,7 @@
 .env
 *.parquet
 *.csv
+PROGRESS.md
 !core/factorlab/data/
 !core/factorlab/data/**
 

@@ -11,7 +11,6 @@ from factorlab.utils import safe_corr
 
 
 def compute_daily_ic(df: pd.DataFrame, factor_col: str, ret_col: str) -> pd.DataFrame:
-    """中文说明。"""
     rows: list[dict[str, float]] = []
     for dt, grp in df.groupby("date"):
         g = grp[[factor_col, ret_col]].dropna()
@@ -27,7 +26,6 @@ def compute_daily_ic(df: pd.DataFrame, factor_col: str, ret_col: str) -> pd.Data
 
 
 def newey_west_tstat(series: pd.Series, lags: int | None = None) -> tuple[float, float]:
-    """中文说明。"""
     x = series.dropna().astype(float).to_numpy()
     n = len(x)
     if n < 8:
@@ -56,7 +54,6 @@ def newey_west_tstat(series: pd.Series, lags: int | None = None) -> tuple[float,
 
 
 def summarize_ic(ic_df: pd.DataFrame) -> dict[str, float]:
-    """中文说明。"""
     ic_mean = float(ic_df["ic"].mean())
     ic_std = float(ic_df["ic"].std(ddof=0))
     rank_ic_mean = float(ic_df["rank_ic"].mean())
@@ -83,7 +80,6 @@ def summarize_ic(ic_df: pd.DataFrame) -> dict[str, float]:
 
 
 def build_ic_decay(summary_rows: list[dict[str, float]]) -> pd.DataFrame:
-    """中文说明。"""
     df = pd.DataFrame(summary_rows)
     cols = ["horizon", "ic_mean", "rank_ic_mean"]
     return df[cols].sort_values("horizon").reset_index(drop=True)

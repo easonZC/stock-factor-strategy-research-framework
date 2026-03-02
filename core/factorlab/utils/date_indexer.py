@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""交易日索引与日期定位工具。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""模型因子训练与 OOF 切分工具。"""
 
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ from factorlab.utils import DateFrameIndexer, safe_corr
 
 @dataclass(slots=True)
 class OOFSplitConfig:
-    """中文说明。"""
 
     train_days: int = 252
     valid_days: int = 21
@@ -52,7 +51,6 @@ class OOFSplitConfig:
 
 @dataclass(slots=True)
 class OOFModelFactorResult:
-    """中文说明。"""
 
     oof_predictions: pd.DataFrame
     fold_summary: pd.DataFrame

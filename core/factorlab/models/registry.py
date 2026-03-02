@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""模型注册中心与插件发现逻辑。"""
 
 from __future__ import annotations
 

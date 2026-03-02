@@ -9,14 +9,12 @@ from factorlab.config import CSStandardizeMode, NeutralizationConfig
 
 
 def winsorize_series_quantile(series: pd.Series, lower_q: float = 0.01, upper_q: float = 0.99) -> pd.Series:
-    """中文说明。"""
     lo = series.quantile(lower_q)
     hi = series.quantile(upper_q)
     return series.clip(lower=lo, upper=hi)
 
 
 def winsorize_series_mad(series: pd.Series, scale: float = 5.0) -> pd.Series:
-    """中文说明。"""
     med = series.median()
     mad = (series - med).abs().median()
     if pd.isna(mad) or mad == 0:
@@ -34,7 +32,6 @@ def apply_winsorize(
     upper_q: float = 0.99,
     mad_scale: float = 5.0,
 ) -> pd.Series:
-    """中文说明。"""
     if method not in {"quantile", "mad"}:
         raise ValueError("winsorize method must be one of: quantile, mad")
 
@@ -47,7 +44,6 @@ def apply_winsorize(
 
 
 def cs_zscore(df: pd.DataFrame, col: str) -> pd.Series:
-    """中文说明。"""
     grouped = df.groupby("date")[col]
     mu = grouped.transform("mean")
     sigma = grouped.transform("std").replace(0, np.nan)
@@ -55,12 +51,10 @@ def cs_zscore(df: pd.DataFrame, col: str) -> pd.Series:
 
 
 def cs_rank(df: pd.DataFrame, col: str) -> pd.Series:
-    """中文说明。"""
     return df.groupby("date")[col].rank(pct=True)
 
 
 def cs_robust_zscore(df: pd.DataFrame, col: str, mad_scale: float = 1.4826) -> pd.Series:
-    """中文说明。"""
     grouped = df.groupby("date")[col]
     median = grouped.transform("median")
     mad = grouped.transform(lambda s: (s - s.median()).abs().median())
@@ -69,7 +63,6 @@ def cs_robust_zscore(df: pd.DataFrame, col: str, mad_scale: float = 1.4826) -> p
 
 
 def apply_cs_standardize(df: pd.DataFrame, col: str, method: CSStandardizeMode) -> pd.Series:
-    """中文说明。"""
     if method == "none":
         return df[col].astype(float)
     if method == "cs_rank":
@@ -82,7 +75,6 @@ def apply_cs_standardize(df: pd.DataFrame, col: str, method: CSStandardizeMode) 
 
 
 def ts_rolling_zscore(df: pd.DataFrame, col: str, window: int = 20) -> pd.Series:
-    """中文说明。"""
     def _roll(s: pd.Series) -> pd.Series:
         mu = s.rolling(window=window, min_periods=max(5, window // 4)).mean()
         sigma = s.rolling(window=window, min_periods=max(5, window // 4)).std().replace(0, np.nan)

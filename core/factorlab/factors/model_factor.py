@@ -13,7 +13,6 @@ from factorlab.models.registry import ModelRegistry
 
 @dataclass(slots=True)
 class ModelFactor(Factor):
-    """中文说明。"""
 
     model_name: str
     model_path: str

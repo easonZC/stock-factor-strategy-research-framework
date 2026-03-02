@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""截面回归与分解分析工具。"""
 
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ def run_fama_macbeth(
     industry_col: str | None = "industry",
     min_obs: int = 30,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """中文说明。"""
     cols = ["date", ret_col, factor_col]
     if size_col and size_col in df.columns:
         cols.append(size_col)
@@ -80,7 +79,6 @@ def quantile_group_decomposition(
     quantiles: int = 5,
     min_group_size: int = 8,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """中文说明。"""
     tmp = df[["date", factor_col, ret_col, group_col]].copy()
     tmp[group_col] = tmp[group_col].astype(str)
     rows: list[dict[str, float | str | pd.Timestamp | int]] = []
@@ -138,7 +136,6 @@ def make_size_style_bucket(
     df: pd.DataFrame,
     size_col: str = "mkt_cap",
 ) -> pd.Series:
-    """中文说明。"""
     if size_col not in df.columns:
         return pd.Series(np.nan, index=df.index)
 

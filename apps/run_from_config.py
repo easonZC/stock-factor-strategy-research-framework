@@ -1,6 +1,7 @@
-"""配置驱动的一键运行入口。
+"""配置驱动主入口。
 
-支持多配置分层合并、CLI 临时覆盖、运行前校验与产物清理。
+推荐使用 `configs/cs_factor.yaml` 或 `configs/ts_factor.yaml`，
+并通过 `data.path` 指向本地数据文件或目录直接运行。
 """
 
 from __future__ import annotations
@@ -25,15 +26,14 @@ LOGGER = get_logger("factorlab.run_from_config")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run factor pipeline from YAML config(s).",
+        description="通过 YAML 配置运行因子研究与可选回测。",
         epilog=(
-            "Examples:\n"
-            "  python apps/run_from_config.py --config configs/cs_factor.yaml --out outputs/research/factor/cs\n"
-            "  python apps/run_from_config.py --config configs/base.yaml --config configs/cs_factor.yaml --set run.research_profile=dev --out outputs/research/factor/cs_dev\n"
+            "示例:\n"
+            "  python apps/run_from_config.py --config configs/cs_factor.yaml --set data.path=data/raw --out outputs/research/factor/cs\n"
+            "  python apps/run_from_config.py --config configs/ts_factor.yaml --set data.path=data/raw/000001.csv --out outputs/research/factor/ts\n"
+            "  python apps/run_from_config.py --config configs/cs_factor.yaml --set factor.names='[factor_a,factor_b]' --out outputs/research/factor/cs_custom\n"
             "  python apps/run_from_config.py --config configs/cs_factor.yaml --set run.std=cs_rank --set research.q=10 --out outputs/research/factor/cs_alias\n"
-            "  python apps/run_from_config.py --config configs/cs_factor.yaml --set research.horizons+=20 --set research.horizons-=1 --out outputs/research/factor/cs_horizon_ops\n"
             "  python apps/run_from_config.py --config configs/cs_factor.yaml --set run.stop_after=research --out outputs/research/factor/cs_no_backtest\n"
-            "  python apps/run_from_config.py --config configs/cs_factor.yaml --set research.transform_auto_discover=true --set research.transform_plugin_dirs='[\"examples/plugins/transforms\"]' --set research.custom_transforms='[{\"name\":\"robust_clip\",\"kwargs\":{\"lower_q\":0.02,\"upper_q\":0.98}}]' --out outputs/research/factor/cs_custom\n"
             "  python apps/run_from_config.py --config configs/cs_factor.yaml --out outputs/research/factor/cs --cleanup-old-outputs --cleanup-days 14 --cleanup-keep 30\n"
         ),
         formatter_class=argparse.RawTextHelpFormatter,

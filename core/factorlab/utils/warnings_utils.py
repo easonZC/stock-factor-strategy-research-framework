@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""运行期告警捕获与汇总。"""
 
 from __future__ import annotations
 
@@ -26,7 +26,6 @@ def summarize_captured_warnings(
     logger_name: str = "factorlab",
     max_actionable_logs: int = 5,
 ) -> dict[str, Any]:
-    """中文说明。"""
     logger = get_logger(logger_name)
     benign = Counter()
     actionable = Counter()

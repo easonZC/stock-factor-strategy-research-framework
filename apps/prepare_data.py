@@ -1,4 +1,4 @@
-﻿"""通过适配器准备标准化面板数据。"""
+﻿"""通过数据适配器准备标准化面板数据。"""
 
 from __future__ import annotations
 
@@ -20,9 +20,9 @@ LOGGER = get_logger("factorlab.prepare_data")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Prepare panel data via adapter",
+        description="使用内置或插件适配器拉取并落盘面板数据。",
         epilog=(
-            "Examples:\n"
+            "示例:\n"
             "  python apps/prepare_data.py --adapter sina --data-dir /stock_sina_update --out data/panel.parquet\n"
             "  python apps/prepare_data.py --adapter stooq --symbols aapl,msft,googl --start-date 2022-01-01 --out data/panel.parquet\n"
             "  python apps/prepare_data.py --adapter my_feed --adapter-plugin-dir plugins/data_adapters --out data/panel.parquet\n"
@@ -30,40 +30,40 @@ def parse_args() -> argparse.Namespace:
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
-    parser.add_argument("--adapter", required=True, help="Adapter type (built-in or plugin adapter name)")
-    parser.add_argument("--data-dir", default=None, help="Input data folder (required for sina)")
-    parser.add_argument("--symbols", default=None, help="Comma-separated symbols (required for stooq)")
-    parser.add_argument("--start-date", default=None, help="Optional start date for stooq (YYYY-MM-DD)")
-    parser.add_argument("--end-date", default=None, help="Optional end date for stooq (YYYY-MM-DD)")
-    parser.add_argument("--min-rows-per-asset", type=int, default=30, help="Minimum clean rows per asset")
-    parser.add_argument("--request-timeout-sec", type=int, default=20, help="HTTP timeout in seconds (stooq)")
+    parser.add_argument("--adapter", required=True, help="适配器名称（内置或插件）")
+    parser.add_argument("--data-dir", default=None, help="输入目录（sina 适配器必填）")
+    parser.add_argument("--symbols", default=None, help="股票列表，逗号分隔（stooq 适配器必填）")
+    parser.add_argument("--start-date", default=None, help="起始日期（stooq，可选，YYYY-MM-DD）")
+    parser.add_argument("--end-date", default=None, help="结束日期（stooq，可选，YYYY-MM-DD）")
+    parser.add_argument("--min-rows-per-asset", type=int, default=30, help="每只资产最小有效行数")
+    parser.add_argument("--request-timeout-sec", type=int, default=20, help="HTTP 超时秒数（stooq）")
     parser.add_argument(
         "--adapter-plugin-dir",
         dest="adapter_plugin_dirs",
         action="append",
         default=[],
-        help="Data adapter plugin directory (repeatable).",
+        help="数据适配器插件目录（可重复）。",
     )
     parser.add_argument(
         "--adapter-plugin",
         dest="adapter_plugins",
         action="append",
         default=[],
-        help="Data adapter plugin module/spec (repeatable).",
+        help="数据适配器插件模块或规范（可重复）。",
     )
     parser.add_argument(
         "--adapter-plugin-on-error",
         choices=["raise", "warn_skip"],
         default="raise",
-        help="Plugin load conflict/error behavior.",
+        help="插件冲突/报错处理策略。",
     )
     parser.add_argument(
         "--log-level",
         default=None,
-        help="Logging level (DEBUG/INFO/WARNING/ERROR). Also supports env FACTORLAB_LOG_LEVEL.",
+        help="日志级别（DEBUG/INFO/WARNING/ERROR），也可用环境变量 FACTORLAB_LOG_LEVEL。",
     )
-    parser.add_argument("--log-file", default=None, help="Optional log file path for this run.")
-    parser.add_argument("--out", required=True, help="Output panel path (.parquet/.csv)")
+    parser.add_argument("--log-file", default=None, help="日志文件路径（可选）。")
+    parser.add_argument("--out", required=True, help="输出面板路径（.parquet/.csv）")
     return parser.parse_args()
 
 

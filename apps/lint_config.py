@@ -26,10 +26,11 @@ from factorlab.workflows import compose_run_config_with_alias_report, validate_r
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Lint run config before executing workflow.",
+        description="运行前检查配置结构与潜在风险。",
         epilog=(
-            "Examples:\n"
+            "示例:\n"
             "  python apps/lint_config.py --config configs/cs_factor.yaml\n"
+            "  python apps/lint_config.py --config configs/ts_factor.yaml\n"
             "  python apps/lint_config.py --config configs/cs_factor.yaml --set run.std=cs_rank --set research.q=10\n"
             "  python apps/lint_config.py --config configs/cs_factor.yaml --strict\n"
             "  python apps/lint_config.py --config configs/cs_factor.yaml --json\n"

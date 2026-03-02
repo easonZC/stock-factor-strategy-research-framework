@@ -1,42 +1,59 @@
-# 时序因子研究配置（单资产 synthetic）
-# 目标：验证 TS 因子流程、滞后分析与基础回测。
-
-imports:
-  - base.yaml
+# 时序因子研究主配置（建议长期使用这一个 TS 配置）
+#
+# 典型运行：
+# python apps/run_from_config.py --config configs/ts_factor.yaml --set data.path=data/raw/000001.csv --out outputs/research/factor/ts
 
 run:
+  # 因子作用域：ts=时序
   factor_scope: ts
+  # 评估轴：时序研究固定 time
   eval_axis: time
-  # ts_rolling_zscore / zscore / none
+  # 标准化：ts_rolling_zscore / zscore / none
   standardization: ts_rolling_zscore
-  research_profile: full
+  research_profile: dev
+  stop_after: backtest
+  config_mode: warn
+  leakage_guard_mode: strict
 
 data:
-  adapter: synthetic
+  # 单资产文件或目录均可。TS 模式下最终会筛到单资产。
+  path: data/raw
   mode: single_asset
+  # 指定资产代码；不填时自动取首个资产
+  asset: null
+  sanitize: true
+  duplicate_policy: last
+  raw_pattern: "*.parquet,*.csv"
+  raw_asset_from_filename: true
+  min_rows_per_asset: 30
   fields_required: [date, close]
 
-  synthetic:
-    n_assets: 1
-    n_days: 420
-    seed: 2026
-    start_date: "2020-01-01"
-
 factor:
-  names: [momentum_20, volatility_20]
+  # 占位名示例；未替换时自动忽略并尝试从面板列自动发现
+  names: [factor_name]
+  on_missing: warn_skip
+  auto_discover_from_panel: true
+  auto_discover: false
+  plugin_dirs: []
+  plugins: []
+  plugin_on_error: warn_skip
+  expressions: {}
+  expression_on_error: warn_skip
+  combinations: []
+  combination_on_error: warn_skip
 
 research:
   horizons: [1, 5, 10, 20]
   quantiles: 5
-  ic_rolling_window: 30
-
-  # TS 专用参数
+  ic_rolling_window: 20
+  annualization_days: 252
   ts_standardize_window: 60
   ts_quantile_lookback: 80
-  ts_signal_lags: [0, 1, 2, 5, 10]
+  ts_signal_lags: [0, 1, 2, 5]
+  missing_policy: drop
 
 backtest:
-  enabled: true
+  enabled: false
   strategy:
     mode: sign
     sign_threshold: 0.0

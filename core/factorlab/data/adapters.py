@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""内置数据适配器与配置校验逻辑。"""
 
 from __future__ import annotations
 
@@ -61,7 +61,6 @@ def _read_csv_robust(path: Path) -> pd.DataFrame:
 
 
 def prepare_sina_panel(config: AdapterConfig) -> pd.DataFrame:
-    """中文说明。"""
     data_dir = Path(config.data_dir)
     if not data_dir.exists() or not data_dir.is_dir():
         raise FileNotFoundError(f"Sina data-dir not found or not a directory: {data_dir}")

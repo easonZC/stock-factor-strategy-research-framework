@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""输出目录保留与清理策略实现。"""
 
 from __future__ import annotations
 

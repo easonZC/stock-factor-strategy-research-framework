@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 
 
 def apply_style() -> None:
-    """中文说明。"""
     plt.style.use("seaborn-v0_8-whitegrid")
     plt.rcParams.update(
         {

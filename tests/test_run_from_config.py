@@ -167,6 +167,101 @@ def test_run_from_config_warn_skip_factor_and_flexible_preprocess(tmp_path) -> N
     assert meta["factors"]["on_missing"] == "warn_skip"
 
 
+def test_run_from_config_minimal_local_file_config(tmp_path) -> None:
+    dates = pd.date_range("2021-01-01", periods=120, freq="B")
+    rows: list[dict] = []
+    for asset_i, asset in enumerate(["A", "B", "C", "D", "E", "F"]):
+        base = 10 + asset_i
+        for i, d in enumerate(dates):
+            rows.append(
+                {
+                    "date": d,
+                    "asset": asset,
+                    "close": base + i * 0.03,
+                    "volume": 1000 + asset_i,
+                    "mkt_cap": 1_000_000 + asset_i * 10_000,
+                    "industry": "Demo",
+                }
+            )
+    panel_path = tmp_path / "panel.csv"
+    pd.DataFrame(rows).to_csv(panel_path, index=False)
+
+    cfg = {
+        "data": {"source": str(panel_path)},
+        "factor": {"names": ["momentum_20"]},
+    }
+    out_dir = tmp_path / "out_minimal_file"
+    res = run_from_config(cfg, out_dir=out_dir)
+    assert res.index_html.exists()
+    meta = json.loads(res.run_meta_json.read_text(encoding="utf-8"))
+    assert meta["data"]["config"]["adapter"] == "csv"
+
+
+def test_run_from_config_minimal_local_directory_config(tmp_path) -> None:
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    dates = pd.date_range("2021-01-01", periods=120, freq="B")
+    for asset_i in range(6):
+        close = 10.0 + asset_i + pd.Series(range(len(dates)), dtype=float) * 0.03
+        frame = pd.DataFrame(
+            {
+                "date": dates,
+                "close": close,
+                "volume": 1000 + asset_i,
+                "mkt_cap": 1_000_000 + asset_i * 10_000,
+                "industry": "Demo",
+            }
+        )
+        frame.to_csv(raw_dir / f"asset_{asset_i}.csv", index=False)
+
+    cfg = {
+        "data": {"source": str(raw_dir)},
+        "factor": {"names": ["momentum_20"]},
+        "backtest": {"enabled": False},
+    }
+    out_dir = tmp_path / "out_minimal_dir"
+    res = run_from_config(cfg, out_dir=out_dir)
+    assert res.index_html.exists()
+    meta = json.loads(res.run_meta_json.read_text(encoding="utf-8"))
+    assert meta["data"]["config"]["adapter"] == "raw_dir"
+    assert meta["data"]["load_report"]["directory_report"]["files_loaded"] == 6
+
+
+def test_run_from_config_auto_discovers_factor_columns_when_placeholder_used(tmp_path) -> None:
+    dates = pd.date_range("2021-01-01", periods=90, freq="B")
+    rows: list[dict] = []
+    for asset_i, asset in enumerate(["A", "B", "C"]):
+        for i, d in enumerate(dates):
+            rows.append(
+                {
+                    "date": d,
+                    "asset": asset,
+                    "close": 10 + asset_i + i * 0.02,
+                    "factor_alpha": (i + 1) * (asset_i + 1) * 0.01,
+                    "factor_beta": (i % 5 - 2) * 0.1,
+                }
+            )
+    panel_path = tmp_path / "panel.parquet"
+    pd.DataFrame(rows).to_parquet(panel_path, index=False)
+
+    cfg = {
+        "data": {"source": str(panel_path)},
+        "factor": {"names": ["factor_name"], "on_missing": "warn_skip"},
+        "research": {"preprocess_steps": ["standardize"], "neutralize": {"enabled": False}},
+        "backtest": {"enabled": False},
+    }
+    out_dir = tmp_path / "out_auto_discover"
+    res = run_from_config(cfg, out_dir=out_dir)
+    assert res.index_html.exists()
+
+    meta = json.loads(res.run_meta_json.read_text(encoding="utf-8"))
+    assert meta["factors"]["placeholder_detected"] is True
+    assert "factor_alpha" in meta["factors"]["requested"]
+    assert "factor_beta" in meta["factors"]["requested"]
+    assert "factor_alpha" in meta["factors"]["effective"]
+    assert "factor_beta" in meta["factors"]["effective"]
+
+
 def test_run_from_config_applies_fast_research_profile_defaults(tmp_path) -> None:
     cfg = {
         "run": {

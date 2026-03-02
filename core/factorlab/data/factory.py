@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""数据适配器注册、发现与插件加载。"""
 
 from __future__ import annotations
 

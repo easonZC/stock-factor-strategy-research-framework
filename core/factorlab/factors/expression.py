@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""表达式因子解析与安全计算。"""
 
 from __future__ import annotations
 
@@ -92,7 +92,6 @@ def _validate_node(node: ast.AST) -> None:
 
 
 def validate_factor_expression(expression: str) -> set[str]:
-    """中文说明。"""
     expr = str(expression).strip()
     if not expr:
         raise ValueError("Expression cannot be empty.")
@@ -143,12 +142,10 @@ def _eval_node(node: ast.AST, context: dict[str, Any]) -> Any:
 
 
 def extract_expression_dependencies(expression: str) -> set[str]:
-    """中文说明。"""
     return validate_factor_expression(expression)
 
 
 def evaluate_factor_expression(panel: pd.DataFrame, expression: str) -> pd.Series:
-    """中文说明。"""
     deps = validate_factor_expression(expression)
     tree = ast.parse(str(expression).strip(), mode="eval")
     missing = [name for name in sorted(deps) if name not in panel.columns]
@@ -167,7 +164,6 @@ def apply_factor_expressions(
     expressions: dict[str, str],
     on_error: str = "raise",
 ) -> tuple[pd.DataFrame, list[str], list[str], list[str]]:
-    """中文说明。"""
     out = panel.copy()
     computed: list[str] = []
     skipped: list[str] = []

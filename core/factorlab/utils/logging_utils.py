@@ -17,7 +17,6 @@ def configure_logging(
     log_file: str | Path | None = None,
     force: bool = False,
 ) -> logging.Logger:
-    """中文说明。"""
     root = logging.getLogger("factorlab")
     if force:
         for h in list(root.handlers):
@@ -50,7 +49,6 @@ def configure_logging(
 
 
 def get_logger(name: str = "factorlab") -> logging.Logger:
-    """中文说明。"""
     root = configure_logging()
     if name == "factorlab":
         return root

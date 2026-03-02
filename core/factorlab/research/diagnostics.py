@@ -8,7 +8,6 @@ from factorlab.utils import safe_corr
 
 
 def coverage_by_date(df: pd.DataFrame, factor_col: str) -> pd.DataFrame:
-    """中文说明。"""
     total = df.groupby("date")["asset"].count()
     usable = df.groupby("date")[factor_col].apply(lambda s: s.notna().sum())
     cov = (usable / total).rename("coverage").reset_index()
@@ -16,7 +15,6 @@ def coverage_by_date(df: pd.DataFrame, factor_col: str) -> pd.DataFrame:
 
 
 def missing_rates(df: pd.DataFrame, factor_cols: list[str]) -> pd.DataFrame:
-    """中文说明。"""
     rows = []
     for col in factor_cols:
         rows.append({"factor": col, "missing_rate": float(df[col].isna().mean())})
@@ -24,7 +22,6 @@ def missing_rates(df: pd.DataFrame, factor_cols: list[str]) -> pd.DataFrame:
 
 
 def outlier_monitor(before: pd.Series, after: pd.Series, factor_name: str) -> pd.DataFrame:
-    """中文说明。"""
     return pd.DataFrame(
         {
             "factor": [factor_name],
@@ -37,7 +34,6 @@ def outlier_monitor(before: pd.Series, after: pd.Series, factor_name: str) -> pd
 
 
 def factor_stability(df: pd.DataFrame, factor_col: str) -> pd.DataFrame:
-    """中文说明。"""
     wide = df.pivot(index="date", columns="asset", values=factor_col).sort_index()
     dates = wide.index
 
@@ -75,7 +71,6 @@ def factor_stability(df: pd.DataFrame, factor_col: str) -> pd.DataFrame:
 
 
 def factor_corr_matrix(df: pd.DataFrame, factors: list[str], method: str = "spearman") -> pd.DataFrame:
-    """中文说明。"""
     if len(factors) < 2:
         return pd.DataFrame()
     cols = [c for c in factors if c in df.columns]

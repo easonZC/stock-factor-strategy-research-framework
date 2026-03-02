@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""组合因子构建与正交化工具。"""
 
 from __future__ import annotations
 
@@ -77,7 +77,6 @@ def _normalize_combination_entry(entry: Any) -> dict[str, Any]:
 
 
 def normalize_factor_combinations(raw: Any, strict: bool = False) -> list[dict[str, Any]]:
-    """中文说明。"""
     if raw is None:
         return []
     entries: list[Any]
@@ -133,7 +132,6 @@ def apply_factor_combinations(
     combinations: list[dict[str, Any]],
     on_error: str = "raise",
 ) -> tuple[pd.DataFrame, list[str], list[str], list[str]]:
-    """中文说明。"""
     out = panel.copy()
     computed: list[str] = []
     skipped: list[str] = []

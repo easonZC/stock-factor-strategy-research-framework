@@ -1,17 +1,16 @@
-﻿# LayerNorm / BatchNorm Concepts for DL Features
+# 深度学习特征归一化简述
 
-When extending factor research with deep learning, normalization choices matter:
+## BatchNorm
+- 按批次统计量归一化
+- 大批量、分布稳定时效果更好
+- 在时序小批量场景下可能不稳定
 
-- BatchNorm:
-  - Normalizes using mini-batch statistics.
-  - Works well with large stable batches.
-  - Can be sensitive when time-series batches are small or non-stationary.
+## LayerNorm
+- 按单样本特征维度归一化
+- 对 batch size 不敏感
+- 更适合序列模型和小批量训练
 
-- LayerNorm:
-  - Normalizes within each sample across feature dimension.
-  - Batch-size agnostic, often more stable for sequence models and small batches.
-
-Practical guidance for quant panels:
-- If training uses variable/small batch sizes or sequence models, prefer LayerNorm.
-- If batch distribution is stable and large, BatchNorm can improve optimization speed.
-- Keep train/validation split strictly time-aware to avoid temporal leakage.
+## 量化场景建议
+- 序列模型或小批量：优先 LayerNorm
+- 大批量且分布稳定：可尝试 BatchNorm
+- 训练/验证必须使用时间切分，避免泄露

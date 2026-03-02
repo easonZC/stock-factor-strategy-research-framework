@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""组合优化求解与约束处理。"""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from factorlab.strategies.implementations import _normalize_long
 
 @dataclass(slots=True)
 class MeanVarianceOptimizerStrategy(Strategy):
-    """中文说明。"""
 
     risk_aversion: float = 5.0
     long_only: bool = False

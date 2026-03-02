@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""可交易股票池过滤与统计。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from factorlab.config import UniverseFilterConfig
 
 @dataclass(slots=True)
 class UniverseFilterReport:
-    """中文说明。"""
 
     rows_before: int
     rows_after: int
@@ -27,7 +26,6 @@ def apply_universe_filter(
     panel: pd.DataFrame,
     config: UniverseFilterConfig,
 ) -> tuple[pd.DataFrame, UniverseFilterReport]:
-    """中文说明。"""
     df = panel.copy()
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df = df.dropna(subset=["date"]).sort_values(["asset", "date"]).reset_index(drop=True)

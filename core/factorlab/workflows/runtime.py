@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""运行时环境清单采集工具。"""
 
 from __future__ import annotations
 
@@ -24,7 +24,6 @@ def _run_git(args: list[str], cwd: Path) -> str | None:
 
 
 def collect_runtime_manifest(repo_root: str | Path | None = None) -> dict[str, Any]:
-    """中文说明。"""
     root = Path(repo_root) if repo_root is not None else Path.cwd()
     branch = _run_git(["branch", "--show-current"], cwd=root)
     commit = _run_git(["rev-parse", "--short", "HEAD"], cwd=root)

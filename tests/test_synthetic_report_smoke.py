@@ -1,4 +1,4 @@
-﻿"""合成数据端到端报告冒烟测试。"""
+"""统一入口冒烟测试。"""
 
 from __future__ import annotations
 
@@ -12,13 +12,17 @@ def test_synthetic_report_smoke(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[1]
     cmd = [
         sys.executable,
-        str(root / "apps" / "run_factor_research_synthetic.py"),
+        str(root / "apps" / "run_from_config.py"),
+        "--config",
+        str(root / "configs" / "cs_factor.yaml"),
+        "--set",
+        "data.adapter=synthetic",
+        "--set",
+        "factor.names=[momentum_20,volatility_20,liquidity_shock]",
+        "--set",
+        "backtest.enabled=false",
         "--out",
         str(out_dir),
-        "--assets",
-        "12",
-        "--days",
-        "120",
     ]
     subprocess.run(cmd, check=True)
 

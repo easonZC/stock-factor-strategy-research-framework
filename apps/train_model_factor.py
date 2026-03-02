@@ -16,9 +16,9 @@ from factorlab.models import train_model_factor
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Train model factor using synthetic panel",
+        description="用合成面板训练并保存模型因子。",
         epilog=(
-            "Examples:\n"
+            "示例:\n"
             "  python apps/train_model_factor.py --model ridge --out artifacts/models/ridge_model_factor.joblib\n"
             "  python apps/train_model_factor.py --model rf --out artifacts/models/rf_model_factor.joblib\n"
         ),

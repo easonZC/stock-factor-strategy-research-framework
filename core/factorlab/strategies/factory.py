@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""策略注册与插件发现。"""
 
 from __future__ import annotations
 
@@ -25,7 +25,6 @@ StrategyCtor = Callable[[], Strategy]
 
 
 def default_strategy_registry() -> dict[str, StrategyCtor]:
-    """中文说明。"""
     return {
         "topk": lambda: TopKLongStrategy(name="topk_long", top_k=20),
         "longshort": lambda: LongShortQuantileStrategy(name="long_short_quantile", quantile=0.2),
@@ -141,7 +140,6 @@ def _merge_registry(
 
 
 def discover_strategy_registry(plugin_dirs: list[str | Path], on_error: str = "raise") -> dict[str, StrategyCtor]:
-    """中文说明。"""
     reg: dict[str, StrategyCtor] = {}
     for raw_dir in plugin_dirs:
         path = Path(raw_dir).expanduser()
@@ -170,7 +168,6 @@ def discover_strategy_registry(plugin_dirs: list[str | Path], on_error: str = "r
 
 
 def load_strategy_plugins(plugin_specs: list[Any], on_error: str = "raise") -> dict[str, StrategyCtor]:
-    """中文说明。"""
     reg: dict[str, StrategyCtor] = {}
     for entry in plugin_specs:
         try:
@@ -236,7 +233,6 @@ def build_strategy_registry(
     on_plugin_error: str = "raise",
     include_defaults: bool = True,
 ) -> dict[str, StrategyCtor]:
-    """中文说明。"""
     registry = default_strategy_registry() if include_defaults else {}
     if plugin_dirs:
         registry = _merge_registry(

@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""模型因子基准工作流实现。"""
 
 from __future__ import annotations
 
@@ -49,7 +49,6 @@ MODEL_ALIASES = {
 
 @dataclass(slots=True)
 class ModelFactorBenchmarkConfig:
-    """中文说明。"""
 
     # 同时支持列表与逗号分隔字符串，便于编程接口与命令行混合调用。
     models: list[str] | str | None = field(default_factory=lambda: list(DEFAULT_MODELS))
@@ -98,7 +97,6 @@ class ModelFactorBenchmarkConfig:
 
 @dataclass(slots=True)
 class ModelFactorBenchmarkResult:
-    """中文说明。"""
 
     out_dir: Path
     index_html: Path
@@ -346,7 +344,6 @@ def run_model_factor_benchmark(
     config: ModelFactorBenchmarkConfig,
     repo_root: str | Path | None = None,
 ) -> ModelFactorBenchmarkResult:
-    """中文说明。"""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     timings: dict[str, float] = {}

@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""统计计算辅助函数。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ def safe_corr(
     method: str = "pearson",
     min_obs: int = 3,
 ) -> float:
-    """中文说明。"""
     a = pd.to_numeric(pd.Series(left), errors="coerce")
     b = pd.to_numeric(pd.Series(right), errors="coerce")
     mask = a.notna() & b.notna()
