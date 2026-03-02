@@ -1,16 +1,19 @@
-﻿# Data and generated artifacts (hard constraint)
-data/
-outputs/
-artifacts/
+# Data and generated artifacts (hard constraint)
+/data/
+/outputs/
+/artifacts/
 .env
 *.parquet
 *.csv
+!src/ssf/data/
+!src/ssf/data/**
 
 # Python
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+.venv/
 
 # Build/test caches
 .pytest_cache/
