@@ -107,9 +107,9 @@ For every complete run, append one new entry at the top of `Run History` with:
   - Cleanup dry-run executed: scanned `7`, removed `0`, kept `7`.
 - Git actions:
   - New branch: `feat/oop-flex-retention-20260301`
-  - Commit: pending
-  - Push: pending
-  - PR: pending
+  - Commit: `15e6d4a` (`feat(ops): add output retention and oop workflow wrappers`)
+  - Push succeeded: `git push -u origin feat/oop-flex-retention-20260301`
+  - PR created: `https://github.com/easonZC/stock-factor-strategy-research-framework/pull/11`
 - Next run direction:
   - 继续把高频工具层接口（如 factor expression / combination 调度）抽象成 OOP service，进一步降低流程函数耦合。
   - 为 outputs 留存策略增加按“项目标签/策略类型”分层保留规则。
