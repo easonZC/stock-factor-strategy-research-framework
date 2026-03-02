@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import html
 from pathlib import Path
 
 import pandas as pd
+
+from factorlab.utils import ensure_within
 
 
 class ReportRenderer:
@@ -13,13 +16,18 @@ class ReportRenderer:
     def __init__(self, out_dir: Path):
         self.out_dir = out_dir
 
+    def _safe_rel(self, path: Path) -> str:
+        safe_path = ensure_within(self.out_dir, path)
+        rel = safe_path.relative_to(self.out_dir.resolve()).as_posix()
+        return html.escape(rel, quote=True)
+
     def _render_tables(self, rows: list[str], table_map: dict[str, list[Path]]) -> None:
         rows.append("<h2>Tables</h2>")
         for section, tables in table_map.items():
-            rows.append(f"<h3>{section}</h3>")
+            rows.append(f"<h3>{html.escape(str(section))}</h3>")
             rows.append("<ul>")
             for table_path in tables:
-                rel = table_path.relative_to(self.out_dir).as_posix()
+                rel = self._safe_rel(table_path)
                 rows.append(f"<li><a href='{rel}'>{rel}</a></li>")
             rows.append("</ul>")
 
@@ -33,7 +41,7 @@ class ReportRenderer:
         rows.append("<h2>Data Adapter Audit</h2>")
         rows.append("<ul>")
         for table_path in audit_files:
-            rel = table_path.relative_to(self.out_dir).as_posix()
+            rel = self._safe_rel(table_path)
             rows.append(f"<li><a href='{rel}'>{rel}</a></li>")
         rows.append("</ul>")
 
@@ -59,17 +67,26 @@ class ReportRenderer:
         rows.append(summary.to_html(index=False, float_format=lambda x: f"{x:.4f}"))
 
         for section, figs in figure_map.items():
-            rows.append(f"<h2>{section}</h2>")
+            rows.append(f"<h2>{html.escape(str(section))}</h2>")
             for fig in figs:
-                rel = fig.relative_to(self.out_dir).as_posix()
+                rel = self._safe_rel(fig)
                 rows.append(f"<div><img src='{rel}' style='max-width:980px; width:100%;'/></div>")
 
         self._render_tables(rows, table_map=table_map)
         self._render_adapter_audit(rows)
 
-        html = "\n".join(rows)
+        html_text = "\n".join(
+            [
+                "<!doctype html>",
+                "<html>",
+                "<head><meta charset='utf-8'><title>FactorLab Report</title></head>",
+                "<body>",
+                *rows,
+                "</body></html>",
+            ]
+        )
         out = self.out_dir / "index.html"
-        out.write_text(html, encoding="utf-8")
+        out.write_text(html_text, encoding="utf-8")
         return out
 
 

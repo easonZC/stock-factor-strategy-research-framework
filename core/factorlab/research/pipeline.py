@@ -39,10 +39,26 @@ from factorlab.research.forward_returns import add_forward_returns
 from factorlab.research.quantile import quantile_returns
 from factorlab.research.report import render_report
 from factorlab.research.statistics import build_ic_decay, compute_daily_ic, newey_west_tstat, summarize_ic
-from factorlab.utils import get_logger
+from factorlab.utils import get_logger, safe_slug
 
 LOGGER = get_logger("factorlab.research")
 ALLOWED_PREPROCESS_STEPS = {"winsorize", "standardize", "neutralize"}
+
+
+def _build_factor_slug_map(factors: list[str]) -> dict[str, str]:
+    """为输出目录生成稳定且不冲突的因子 slug。"""
+    used: set[str] = set()
+    mapping: dict[str, str] = {}
+    for fac in factors:
+        base = safe_slug(fac, default="factor")
+        candidate = base
+        seq = 2
+        while candidate in used:
+            candidate = f"{base}_{seq}"
+            seq += 1
+        used.add(candidate)
+        mapping[fac] = candidate
+    return mapping
 
 
 class FactorResearchPipeline:
@@ -62,6 +78,7 @@ class FactorResearchPipeline:
         for col in panel.select_dtypes(include=["float64"]).columns:
             panel[col] = panel[col].astype("float32")
         panel = add_forward_returns(panel, horizons=self.config.horizons)
+        factor_slug_map = _build_factor_slug_map(factors)
 
         summary_rows: list[dict[str, float | str | int]] = []
         figure_map: dict[str, list[Path]] = {}
@@ -125,8 +142,9 @@ class FactorResearchPipeline:
 
             for variant in variants:
                 col = f"{fac}_{variant}"
-                fac_asset_dir = assets_dir / "factors" / fac / variant
-                fac_table_dir = tables_dir / "factors" / fac / variant
+                fac_slug = factor_slug_map[fac]
+                fac_asset_dir = assets_dir / "factors" / fac_slug / variant
+                fac_table_dir = tables_dir / "factors" / fac_slug / variant
                 fac_asset_dir.mkdir(parents=True, exist_ok=True)
                 fac_table_dir.mkdir(parents=True, exist_ok=True)
 

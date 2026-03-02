@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -131,3 +132,35 @@ def test_validate_schema_rejects_bad_custom_transform_format() -> None:
     cfg["research"]["custom_transforms"] = [{"name": "x", "kwargs": "not_a_dict"}]
     with pytest.raises(ValueError, match="research.custom_transforms\\[x\\].kwargs"):
         validate_run_config_schema(cfg, strict=True)
+
+
+def test_run_from_config_strict_mode_rejects_autocorrect_when_schema_skipped(tmp_path: Path) -> None:
+    cfg = _valid_cfg()
+    cfg["run"]["config_mode"] = "strict"
+    cfg["run"]["standardization"] = "bad_standardization"
+    with pytest.raises(ValueError, match="auto-correction"):
+        run_from_config(cfg, out_dir=tmp_path / "strict_autocorrect_fail", validate_schema=False)
+
+
+def test_run_from_config_warn_mode_records_autocorrect(tmp_path: Path) -> None:
+    cfg = _valid_cfg()
+    cfg["run"]["config_mode"] = "warn"
+    cfg["run"]["standardization"] = "bad_standardization"
+    res = run_from_config(cfg, out_dir=tmp_path / "warn_autocorrect_ok", validate_schema=False)
+    assert res.index_html.exists()
+    meta = json.loads(res.run_meta_json.read_text(encoding="utf-8"))
+    assert meta["config_governance"]["config_mode"] == "warn"
+    assert meta["config_governance"]["autocorrection_count"] >= 1
+
+
+def test_run_from_config_leakage_guard_blocks_forbidden_expression(tmp_path: Path) -> None:
+    cfg = _valid_cfg()
+    cfg["run"]["leakage_guard_mode"] = "strict"
+    cfg["factor"] = {
+        "names": ["leaky_expr"],
+        "on_missing": "raise",
+        "expressions": {"leaky_expr": "fwd_ret_5"},
+        "expression_on_error": "raise",
+    }
+    with pytest.raises(ValueError, match="Leakage guard blocked run"):
+        run_from_config(cfg, out_dir=tmp_path / "leakage_blocked", validate_schema=False)
