@@ -42,7 +42,7 @@ core/factorlab/
   strategies/    # Strategy base + implementations
   workflows/     # Config runner and benchmark workflows
 apps/         # Thin CLI entrypoints
-configs/         # Config templates (TS/CS demos)
+configs/         # Config templates (TS/CS)
 examples/legacy/ # Quarantined legacy/internship reference code only
 docs/            # Processing and methodology notes
 tests/           # Unit and smoke tests
@@ -88,23 +88,23 @@ python apps/run_factor_research.py --panel data/panel.parquet --out outputs/rese
 
 ### CS example
 ```bash
-python apps/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/research/factor/config_cs
+python apps/run_from_config.py --config configs/cs_factor.yaml --out outputs/research/factor/config_cs
 ```
 
 ### TS example
 ```bash
-python apps/run_from_config.py --config configs/ts_factor_demo.yaml --out outputs/research/factor/config_ts
+python apps/run_from_config.py --config configs/ts_factor.yaml --out outputs/research/factor/config_ts
 ```
 
 ### CS public-data example (Stooq)
 ```bash
-python apps/run_from_config.py --config configs/cs_stooq_demo.yaml --out outputs/research/factor/config_stooq
+python apps/run_from_config.py --config configs/cs_stooq.yaml --out outputs/research/factor/config_stooq
 ```
 
 ### Multi-config merge + temporary overrides
 ```bash
 python apps/run_from_config.py \
-  --config configs/cs_factor_demo.yaml \
+  --config configs/cs_factor.yaml \
   --config configs/local_override.yaml \
   --set research.horizons='[1,5,10]' \
   --set research.horizons+=20 \
@@ -154,7 +154,7 @@ python apps/cleanup_outputs.py --root outputs/research --older-than-days 14 --ke
 `apps/run_from_config.py` also supports post-run cleanup:
 ```bash
 python apps/run_from_config.py \
-  --config configs/cs_factor_demo.yaml \
+  --config configs/cs_factor.yaml \
   --out outputs/research/factor/config_cs \
   --cleanup-old-outputs \
   --cleanup-days 14 \

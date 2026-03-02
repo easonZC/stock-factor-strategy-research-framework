@@ -1,0 +1,127 @@
+# 截面因子研究配置（合成数据）
+# 目标：开箱可跑 + 接口更宽松，适合快速研究迭代。
+
+run:
+  # 因子作用域：cs=截面，ts=时序
+  factor_scope: cs
+  # 评估轴：截面因子固定为 cross_section
+  eval_axis: cross_section
+  # 标准化方式：cs_zscore / cs_rank / cs_robust_zscore / none
+  standardization: cs_zscore
+  # 配置治理：strict(严格阻断) / warn(告警继续) / compat(兼容模式)
+  config_mode: warn
+  # 泄露防护：strict / warn / off
+  leakage_guard_mode: strict
+  # 阶段停止点：factor / research / backtest
+  stop_after: backtest
+  # 是否在自动纠偏时直接失败
+  fail_on_autocorrect: false
+
+data:
+  # 内置适配器：synthetic / parquet / csv / sina / stooq
+  adapter: synthetic
+  # 数据形态：panel(多资产) / single_asset(单资产)
+  mode: panel
+  # 运行前最小字段要求
+  fields_required: [date, asset, close, volume, mkt_cap, industry]
+  sanitize: true
+  duplicate_policy: last
+  # 适配器插件（可选）
+  adapter_auto_discover: false
+  adapter_plugin_dirs: []
+  adapter_plugins: []
+  adapter_plugin_on_error: warn_skip
+
+  # synthetic 适配器参数
+  synthetic:
+    n_assets: 80
+    n_days: 520
+    seed: 2026
+    start_date: "2019-01-01"
+
+factor:
+  # 参与研究的因子名，支持内置/插件/表达式/组合因子
+  names: [momentum_20, volatility_20, liquidity_shock, size]
+  # 缺失因子处理：raise / warn_skip
+  on_missing: warn_skip
+
+  # 因子插件（可选）
+  auto_discover: false
+  plugin_dirs: []
+  plugins: []
+  plugin_on_error: warn_skip
+
+  # 表达式因子（可选）
+  expressions: {}
+  expression_on_error: warn_skip
+
+  # 组合因子（可选）
+  combinations: []
+  combination_on_error: warn_skip
+
+universe_filter:
+  enabled: false
+  min_close: 0.0
+  min_history_days: 1
+  min_median_dollar_volume: 0.0
+  liquidity_lookback: 20
+
+research:
+  horizons: [1, 5, 10, 20]
+  quantiles: 5
+  ic_rolling_window: 20
+  annualization_days: 252
+
+  # 缺失值策略：drop / fill_zero / ffill_by_asset / cs_median_by_date / keep
+  missing_policy: drop
+
+  # 处理顺序可调；研究探索时可只保留其中一部分
+  preprocess_steps: [winsorize, standardize, neutralize]
+
+  # 变换插件（可选）
+  transform_auto_discover: false
+  transform_plugin_dirs: []
+  transform_plugins: []
+  transform_plugin_on_error: warn_skip
+  custom_transforms: []
+
+  winsorize:
+    enabled: true
+    # quantile / mad
+    method: quantile
+    lower_q: 0.01
+    upper_q: 0.99
+    mad_scale: 5.0
+
+  neutralize:
+    enabled: true
+    # none / size / industry / both
+    mode: both
+
+backtest:
+  enabled: true
+
+  strategy:
+    # sign / topk / longshort / flex / meanvar
+    mode: longshort
+    long_short_quantile: 0.2
+    rebalance_every: 1
+    weight_scheme: equal
+    auto_discover: false
+    plugin_dirs: []
+    plugins: []
+    plugin_on_error: warn_skip
+
+  commission_bps: 3.0
+  slippage_bps: 2.0
+  leverage: 1.0
+  execution_delay_days: 1
+  execution_price_col: close
+
+  # 风险约束（可选，null 表示不启用）
+  max_turnover: null
+  max_abs_weight: null
+  max_gross_exposure: null
+  max_net_exposure: null
+  enforce_industry_neutral: false
+  industry_col: industry
