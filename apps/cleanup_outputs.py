@@ -1,4 +1,7 @@
-"""模块说明。"""
+"""历史输出清理工具。
+
+按时间与保留数量策略清理 `outputs/` 下的旧运行目录。
+"""
 
 from __future__ import annotations
 

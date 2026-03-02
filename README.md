@@ -42,7 +42,7 @@ core/factorlab/
   strategies/    # Strategy base + implementations
   workflows/     # Config runner and benchmark workflows
 apps/         # Thin CLI entrypoints
-configs/         # Config templates (TS/CS)
+configs/         # Config templates (base + TS/CS layered)
 examples/legacy/ # Quarantined legacy/internship reference code only
 docs/            # Processing and methodology notes
 tests/           # Unit and smoke tests
@@ -104,6 +104,7 @@ python apps/run_from_config.py --config configs/cs_stooq.yaml --out outputs/rese
 ### Multi-config merge + temporary overrides
 ```bash
 python apps/run_from_config.py \
+  --config configs/base.yaml \
   --config configs/cs_factor.yaml \
   --config configs/local_override.yaml \
   --set research.horizons='[1,5,10]' \
@@ -161,6 +162,13 @@ python apps/run_from_config.py \
   --cleanup-keep 30
 ```
 
+### Config lint before run (recommended)
+```bash
+python apps/lint_config.py --config configs/cs_factor.yaml
+python apps/lint_config.py --config configs/cs_factor.yaml --set run.std=cs_rank --set research.q=10
+python apps/lint_config.py --config configs/cs_factor.yaml --strict
+```
+
 ### Required config keys
 - `run.factor_scope`: `cs` or `ts`
 - `run.eval_axis`: `cross_section` or `time`
@@ -184,6 +192,9 @@ python apps/run_from_config.py \
 - `run.fail_on_autocorrect`: fail the run whenever normalization changed user-provided values
 - `run.leakage_guard_mode`: `strict|warn|off` to guard forbidden future/label references
 - `run.stop_after`: `factor|research|backtest` (stage-level stop for faster iteration)
+- `run.research_profile`: `fast|dev|full` for one-click research granularity presets
+- config aliases (auto-migrated): `run.std|run.standardize|run.scope|run.axis|run.profile`, `research.q|research.ic_window`, etc.
+- layered config imports: top-level `imports` / `extends` supports recursive relative-path composition
 - `backtest.strategy.mode`: built-in `sign|topk|longshort|flex|meanvar` or plugin-defined mode
 - `backtest` risk controls: `max_turnover|max_abs_weight|max_gross_exposure|max_net_exposure`
 - `backtest.benchmark_mode`: `none|cross_sectional_mean|panel_column`

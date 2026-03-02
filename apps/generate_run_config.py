@@ -1,4 +1,7 @@
-"""模块说明。"""
+"""运行配置模板生成器。
+
+用于按 TS/CS 作用域与数据适配器快速生成可运行 YAML，并支持 `--set` 临时覆盖。
+"""
 
 from __future__ import annotations
 
@@ -23,9 +26,10 @@ def _base_run(scope: str) -> dict[str, Any]:
         "factor_scope": scope,
         "eval_axis": "cross_section" if is_cs else "time",
         "standardization": "cs_zscore" if is_cs else "ts_rolling_zscore",
-        "config_mode": "strict",
+        "config_mode": "warn",
         "fail_on_autocorrect": False,
         "leakage_guard_mode": "strict",
+        "research_profile": "full",
     }
 
 
@@ -39,7 +43,7 @@ def _base_data(scope: str, adapter: str) -> dict[str, Any]:
         "adapter_auto_discover": False,
         "adapter_plugin_dirs": [],
         "adapter_plugins": [],
-        "adapter_plugin_on_error": "raise",
+        "adapter_plugin_on_error": "warn_skip",
     }
 
     if adapter == "synthetic":
@@ -90,7 +94,7 @@ def _base_research(scope: str) -> dict[str, Any]:
             "transform_auto_discover": False,
             "transform_plugin_dirs": [],
             "transform_plugins": [],
-            "transform_plugin_on_error": "raise",
+            "transform_plugin_on_error": "warn_skip",
             "custom_transforms": [],
             "winsorize": {
                 "enabled": True,
@@ -113,7 +117,7 @@ def _base_research(scope: str) -> dict[str, Any]:
         "transform_auto_discover": False,
         "transform_plugin_dirs": [],
         "transform_plugins": [],
-        "transform_plugin_on_error": "raise",
+        "transform_plugin_on_error": "warn_skip",
         "custom_transforms": [],
     }
 
@@ -141,15 +145,15 @@ def build_template(scope: str, adapter: str, factors: list[str]) -> dict[str, An
         "data": _base_data(scope, adapter),
         "factor": {
             "names": factor_list,
-            "on_missing": "raise",
+            "on_missing": "warn_skip",
             "auto_discover": False,
             "plugin_dirs": [],
             "plugins": [],
-            "plugin_on_error": "raise",
+            "plugin_on_error": "warn_skip",
             "expressions": {},
-            "expression_on_error": "raise",
+            "expression_on_error": "warn_skip",
             "combinations": [],
-            "combination_on_error": "raise",
+            "combination_on_error": "warn_skip",
         },
         "research": _base_research(scope),
         "backtest": {

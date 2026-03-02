@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""运行配置 schema 校验测试。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,12 @@ from factorlab.workflows import run_from_config, validate_run_config_schema
 
 def _valid_cfg() -> dict:
     return {
-        "run": {"factor_scope": "cs", "eval_axis": "cross_section", "standardization": "cs_zscore"},
+        "run": {
+            "factor_scope": "cs",
+            "eval_axis": "cross_section",
+            "standardization": "cs_zscore",
+            "research_profile": "full",
+        },
         "data": {
             "mode": "panel",
             "adapter": "synthetic",
@@ -51,6 +56,13 @@ def test_validate_run_config_schema_invalid_stop_after_raises() -> None:
     cfg = _valid_cfg()
     cfg["run"]["stop_after"] = "data"
     with pytest.raises(ValueError, match="run.stop_after"):
+        validate_run_config_schema(cfg, strict=True)
+
+
+def test_validate_run_config_schema_invalid_research_profile_raises() -> None:
+    cfg = _valid_cfg()
+    cfg["run"]["research_profile"] = "slow"
+    with pytest.raises(ValueError, match="run.research_profile"):
         validate_run_config_schema(cfg, strict=True)
 
 
@@ -108,6 +120,15 @@ def test_validate_schema_custom_adapter_allowed_with_plugins() -> None:
     cfg["data"]["adapter_plugin_dirs"] = ["plugins/data_adapters"]
     warnings = validate_run_config_schema(cfg, strict=True)
     assert isinstance(warnings, list)
+
+
+def test_validate_schema_accepts_alias_keys() -> None:
+    cfg = _valid_cfg()
+    cfg["run"].pop("standardization", None)
+    cfg["run"]["std"] = "cs_rank"
+    cfg["research"]["q"] = 7
+    warnings = validate_run_config_schema(cfg, strict=True)
+    assert any("alias migrated: run.std" in x for x in warnings)
 
 
 def test_validate_schema_stooq_rejects_bad_timeout() -> None:
