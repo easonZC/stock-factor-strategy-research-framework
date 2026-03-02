@@ -53,6 +53,67 @@ For every complete run, append one new entry at the top of `Run History` with:
 
 ## Run History
 
+### Run 2026-03-01-018
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal: 继续提升接口灵活性与工程可维护性：
+  - 在关键流程中加强 OOP 化（减少纯函数拼接）；
+  - 增加 outputs 历史测试/运行产物的定期清理能力；
+  - 明确 `data/` 与 `stock_data/` 目录边界与最佳实践。
+- Changes:
+  - OOP 化改造（数据适配器生命周期）：
+    - `core/factorlab/workflows/config_runner.py`
+    - 新增：
+      - `DataAdapterWorkflowResult`（阶段输出对象）
+      - `DataAdapterWorkflow`（统一管理 adapter 注册、配置校验、数据加载、质量审计）
+    - `run_from_config(...)` 改为调用 `DataAdapterWorkflow.run()`，接口更聚合、阶段职责更清晰。
+  - OOP 化改造（报告渲染）：
+    - `core/factorlab/research/report.py`
+    - 新增 `ReportRenderer` 类，并保留 `render_report(...)` 兼容包装函数。
+  - outputs 定期清理能力：
+    - 新增 `core/factorlab/ops/retention.py`
+      - `RetentionPolicy`
+      - `RetentionRunResult`
+      - `OutputRetentionManager`
+    - 新增 `core/factorlab/ops/__init__.py`
+    - 新增 CLI:
+      - `apps/cleanup_outputs.py`
+      - 支持 `--older-than-days` + `--keep-latest` + `--dry-run`
+    - `apps/run_from_config.py` 新增可选参数：
+      - `--cleanup-old-outputs`
+      - `--cleanup-root`
+      - `--cleanup-days`
+      - `--cleanup-keep`
+      - `--cleanup-dry-run`
+      - 允许每次运行后自动执行留存清理。
+  - 目录治理与文档：
+    - `.gitignore` 增加 `/stock_data/`，避免误提交本地大体量原始数据目录。
+    - `README.md` 增加：
+      - output retention 清理命令
+      - `data/` / `stock_data/` 目录规范说明
+    - `docs/architecture.md` 增加：
+      - `DataAdapterWorkflow`、`ReportRenderer`、`OutputRetentionManager` 架构说明
+  - 测试：
+    - 新增 `tests/test_output_retention.py`
+      - 覆盖真实删除与 dry-run 两种清理模式。
+- Validation commands:
+  - `python3 -m ruff check core apps tests`
+  - `python3 -m pytest -q tests/test_output_retention.py tests/test_run_from_config.py tests/test_data_adapter_plugins.py`
+  - `python3 -m pytest -q`
+  - `python3 apps/cleanup_outputs.py --root outputs/research --older-than-days 14 --keep-latest 20 --dry-run --json`
+- Validation summary:
+  - Lint passed.
+  - Targeted tests passed: `11 passed`.
+  - Full tests passed: `57 passed`.
+  - Cleanup dry-run executed: scanned `7`, removed `0`, kept `7`.
+- Git actions:
+  - New branch: `feat/oop-flex-retention-20260301`
+  - Commit: pending
+  - Push: pending
+  - PR: pending
+- Next run direction:
+  - 继续把高频工具层接口（如 factor expression / combination 调度）抽象成 OOP service，进一步降低流程函数耦合。
+  - 为 outputs 留存策略增加按“项目标签/策略类型”分层保留规则。
+
 ### Run 2026-03-01-017
 - Time: 2026-03-01 (America/Los_Angeles)
 - Goal: 实现两项数据层增强并提升可读性：

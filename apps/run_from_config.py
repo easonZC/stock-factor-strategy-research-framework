@@ -13,6 +13,7 @@ if str(CORE_PATH) not in sys.path:
 
 import yaml
 
+from factorlab.ops import OutputRetentionManager, RetentionPolicy  # noqa: E402
 from factorlab.utils import configure_logging, get_logger  # noqa: E402
 from factorlab.workflows import compose_run_config, run_from_config  # noqa: E402
 
@@ -27,6 +28,7 @@ def parse_args() -> argparse.Namespace:
             "  python apps/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/research/factor/cs\n"
             "  python apps/run_from_config.py --config base.yaml --config local.yaml --set research.horizons='[1,5,10]' --out outputs/research/factor/merged\n"
             "  python apps/run_from_config.py --config configs/cs_factor_demo.yaml --set research.transform_auto_discover=true --set research.transform_plugin_dirs='[\"examples/plugins/transforms\"]' --set research.custom_transforms='[{\"name\":\"robust_clip\",\"kwargs\":{\"lower_q\":0.02,\"upper_q\":0.98}}]' --out outputs/research/factor/cs_custom\n"
+            "  python apps/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/research/factor/cs --cleanup-old-outputs --cleanup-days 14 --cleanup-keep 30\n"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -64,6 +66,33 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional log file path for this run.",
     )
+    parser.add_argument(
+        "--cleanup-old-outputs",
+        action="store_true",
+        help="Run retention cleanup for old output runs after this task.",
+    )
+    parser.add_argument(
+        "--cleanup-root",
+        default="outputs/research",
+        help="Retention cleanup root directory.",
+    )
+    parser.add_argument(
+        "--cleanup-days",
+        type=int,
+        default=14,
+        help="Remove runs older than this number of days (with keep-latest protection).",
+    )
+    parser.add_argument(
+        "--cleanup-keep",
+        type=int,
+        default=20,
+        help="Always keep latest N runs under cleanup root.",
+    )
+    parser.add_argument(
+        "--cleanup-dry-run",
+        action="store_true",
+        help="Preview retention cleanup without deleting directories.",
+    )
     return parser.parse_args()
 
 
@@ -91,6 +120,23 @@ def main() -> None:
         result.summary_csv,
         result.run_meta_json,
     )
+    if args.cleanup_old_outputs:
+        cleanup_res = OutputRetentionManager(
+            root_dir=args.cleanup_root,
+            policy=RetentionPolicy(
+                older_than_days=int(args.cleanup_days),
+                keep_latest=int(args.cleanup_keep),
+                dry_run=bool(args.cleanup_dry_run),
+            ),
+        ).cleanup()
+        LOGGER.info(
+            "Retention cleanup finished. root=%s scanned=%s removed=%s kept=%s dry_run=%s",
+            cleanup_res.root_dir,
+            cleanup_res.scanned,
+            cleanup_res.removed,
+            cleanup_res.kept,
+            args.cleanup_dry_run,
+        )
 
 
 if __name__ == "__main__":

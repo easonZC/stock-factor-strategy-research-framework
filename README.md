@@ -34,6 +34,7 @@ core/factorlab/
   data/          # IO, synthetic data, Sina adapter, universe filters
   factors/       # Factor base + built-in factors + model factor
   models/        # Model registry + OOF training helpers
+  ops/           # Retention/cleanup operations utilities
   plotting/      # Unified chart style and plotting functions
   preprocess/    # Winsorize/standardize/missing/neutralize transforms
   research/      # CS/TS research pipelines, statistics, report renderer
@@ -129,6 +130,22 @@ python apps/generate_run_config.py --scope cs --adapter synthetic --out configs/
 python apps/generate_run_config.py --scope ts --adapter parquet --set data.path=data/panel.parquet --out configs/generated_ts.yaml
 ```
 
+### Output retention cleanup (recommended)
+```bash
+python apps/cleanup_outputs.py --root outputs/research --older-than-days 14 --keep-latest 20
+python apps/cleanup_outputs.py --root outputs/research --older-than-days 14 --keep-latest 20 --dry-run
+```
+
+`apps/run_from_config.py` also supports post-run cleanup:
+```bash
+python apps/run_from_config.py \
+  --config configs/cs_factor_demo.yaml \
+  --out outputs/research/factor/config_cs \
+  --cleanup-old-outputs \
+  --cleanup-days 14 \
+  --cleanup-keep 30
+```
+
 ### Required config keys
 - `run.factor_scope`: `cs` or `ts`
 - `run.eval_axis`: `cross_section` or `time`
@@ -154,6 +171,8 @@ python apps/generate_run_config.py --scope ts --adapter parquet --set data.path=
 - CLI `run_from_config` pre-validates config schema by default; use `--skip-schema-validation` to bypass.
 - CLI logging: major entrypoints support `--log-level` and `--log-file`; env `FACTORLAB_LOG_LEVEL` is also supported.
   - run metadata includes `warning_summary` for benign/actionable warning audit.
+- CLI output retention:
+  - `--cleanup-old-outputs` + `--cleanup-root|--cleanup-days|--cleanup-keep|--cleanup-dry-run`
 
 ### Plugin Factor Example
 ```yaml
@@ -327,6 +346,11 @@ outputs/research/factor/panel_report/
 - No hard-coded local paths or tokens.
 - Use CLI args, env vars, and config templates.
 - Legacy/internship code is isolated under `examples/legacy/`.
+
+## Data Directory Convention
+- `data/`: 本地中间数据目录（推荐存放清洗后的 panel，如 `data/panel.parquet`）。
+- `stock_data/`: 你现在的原始 A 股/北交所 CSV 数据目录（仓库内可用，但建议迁移到 `data/raw/stock_data/` 统一管理）。
+- 由于 `.gitignore` 已忽略 `/data/` 与 `*.csv`，把 `stock_data` 放进 `data/` 是安全且推荐的。
 
 ## Testing and CI
 ```bash

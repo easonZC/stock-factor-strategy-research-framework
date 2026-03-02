@@ -78,6 +78,133 @@ class ConfigRunResult:
     backtest_summary_csv: Path | None
 
 
+@dataclass(slots=True)
+class DataAdapterWorkflowResult:
+    """数据适配器阶段输出。"""
+
+    panel: pd.DataFrame
+    load_report: dict[str, Any]
+    mode_report: dict[str, Any]
+    adapter_validation_report: dict[str, Any]
+    adapter_audit_tables: dict[str, str]
+    adapter_registry: dict[str, Any]
+    adapter_validator_registry: dict[str, Any]
+    adapter_cfg: AdapterConfig | None
+
+
+class DataAdapterWorkflow:
+    """数据适配器生命周期管理器（注册、校验、加载、审计）。"""
+
+    def __init__(
+        self,
+        data_cfg: dict[str, Any],
+        scope_cfg: dict[str, Any],
+        out_dir: Path,
+        timings: dict[str, float],
+    ):
+        self.data_cfg = data_cfg
+        self.scope_cfg = scope_cfg
+        self.out_dir = out_dir
+        self.timings = timings
+        self.logger_name = "factorlab.workflows.config_runner"
+
+    def _build_adapter_registry(self) -> dict[str, Any]:
+        with timed_stage("build_data_adapter_registry", timings=self.timings, logger_name=self.logger_name):
+            return build_data_adapter_registry(
+                plugin_dirs=self.data_cfg["adapter_plugin_dirs"] if self.data_cfg["adapter_auto_discover"] else [],
+                plugin_specs=self.data_cfg["adapter_plugins"],
+                on_plugin_error=self.data_cfg["adapter_plugin_on_error"],
+                include_defaults=True,
+            )
+
+    def _build_adapter_validator_registry(self) -> dict[str, Any]:
+        with timed_stage(
+            "build_data_adapter_validator_registry",
+            timings=self.timings,
+            logger_name=self.logger_name,
+        ):
+            return build_data_adapter_validator_registry(
+                plugin_dirs=self.data_cfg["adapter_plugin_dirs"] if self.data_cfg["adapter_auto_discover"] else [],
+                plugin_specs=self.data_cfg["adapter_plugins"],
+                on_plugin_error=self.data_cfg["adapter_plugin_on_error"],
+                include_defaults=True,
+            )
+
+    def _validate_adapter(
+        self,
+        adapter_registry: dict[str, Any],
+        validator_registry: dict[str, Any],
+    ) -> tuple[AdapterConfig | None, dict[str, Any]]:
+        adapter_cfg: AdapterConfig | None = None
+        report: dict[str, Any] = {
+            "adapter": self.data_cfg["adapter"],
+            "validated": False,
+            "validator_found": False,
+            "validation_seconds": 0.0,
+            "warnings": [],
+        }
+        with timed_stage(
+            "validate_data_adapter_config",
+            timings=self.timings,
+            logger_name=self.logger_name,
+        ):
+            if self.data_cfg["adapter"] in adapter_registry:
+                adapter_cfg = _build_adapter_config(self.data_cfg)
+                report = _validate_adapter_config(
+                    adapter=self.data_cfg["adapter"],
+                    adapter_cfg=adapter_cfg,
+                    validator_registry=validator_registry,
+                )
+        return adapter_cfg, report
+
+    def _load_and_shape(
+        self,
+        adapter_registry: dict[str, Any],
+        adapter_cfg: AdapterConfig | None,
+    ) -> tuple[pd.DataFrame, dict[str, Any], dict[str, Any]]:
+        with timed_stage("load_data", timings=self.timings, logger_name=self.logger_name):
+            panel, load_report = _load_data(
+                self.data_cfg,
+                self.scope_cfg,
+                adapter_registry=adapter_registry,
+                adapter_cfg=adapter_cfg,
+            )
+            panel, mode_report = _ensure_mode_shape(panel, data_cfg=self.data_cfg)
+        return panel, load_report, mode_report
+
+    def _audit_quality(self, panel: pd.DataFrame, load_report: dict[str, Any]) -> dict[str, str]:
+        with timed_stage("adapter_quality_audit", timings=self.timings, logger_name=self.logger_name):
+            return _write_adapter_quality_audit_tables(
+                panel=panel,
+                data_cfg=self.data_cfg,
+                load_report=load_report,
+                out_dir=self.out_dir,
+            )
+
+    def run(self) -> DataAdapterWorkflowResult:
+        adapter_registry = self._build_adapter_registry()
+        validator_registry = self._build_adapter_validator_registry()
+        adapter_cfg, adapter_validation_report = self._validate_adapter(
+            adapter_registry=adapter_registry,
+            validator_registry=validator_registry,
+        )
+        panel, load_report, mode_report = self._load_and_shape(
+            adapter_registry=adapter_registry,
+            adapter_cfg=adapter_cfg,
+        )
+        adapter_audit_tables = self._audit_quality(panel=panel, load_report=load_report)
+        return DataAdapterWorkflowResult(
+            panel=panel,
+            load_report=load_report,
+            mode_report=mode_report,
+            adapter_validation_report=adapter_validation_report,
+            adapter_audit_tables=adapter_audit_tables,
+            adapter_registry=adapter_registry,
+            adapter_validator_registry=validator_registry,
+            adapter_cfg=adapter_cfg,
+        )
+
+
 def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
@@ -1514,62 +1641,19 @@ def run_from_config(
     timings: dict[str, float] = {}
     captured_warnings: list[Any] = []
 
-    with timed_stage("build_data_adapter_registry", timings=timings, logger_name="factorlab.workflows.config_runner"):
-        data_adapter_registry = build_data_adapter_registry(
-            plugin_dirs=data_cfg["adapter_plugin_dirs"] if data_cfg["adapter_auto_discover"] else [],
-            plugin_specs=data_cfg["adapter_plugins"],
-            on_plugin_error=data_cfg["adapter_plugin_on_error"],
-            include_defaults=True,
-        )
-    with timed_stage(
-        "build_data_adapter_validator_registry",
+    adapter_stage = DataAdapterWorkflow(
+        data_cfg=data_cfg,
+        scope_cfg=scope_cfg,
+        out_dir=out,
         timings=timings,
-        logger_name="factorlab.workflows.config_runner",
-    ):
-        data_adapter_validator_registry = build_data_adapter_validator_registry(
-            plugin_dirs=data_cfg["adapter_plugin_dirs"] if data_cfg["adapter_auto_discover"] else [],
-            plugin_specs=data_cfg["adapter_plugins"],
-            on_plugin_error=data_cfg["adapter_plugin_on_error"],
-            include_defaults=True,
-        )
-
-    adapter_cfg = None
-    adapter_validation_report: dict[str, Any] = {
-        "adapter": data_cfg["adapter"],
-        "validated": False,
-        "validator_found": False,
-        "validation_seconds": 0.0,
-        "warnings": [],
-    }
-    with timed_stage(
-        "validate_data_adapter_config",
-        timings=timings,
-        logger_name="factorlab.workflows.config_runner",
-    ):
-        if data_cfg["adapter"] in data_adapter_registry:
-            adapter_cfg = _build_adapter_config(data_cfg)
-            adapter_validation_report = _validate_adapter_config(
-                adapter=data_cfg["adapter"],
-                adapter_cfg=adapter_cfg,
-                validator_registry=data_adapter_validator_registry,
-            )
-
-    with timed_stage("load_data", timings=timings, logger_name="factorlab.workflows.config_runner"):
-        panel, load_report = _load_data(
-            data_cfg,
-            scope_cfg,
-            adapter_registry=data_adapter_registry,
-            adapter_cfg=adapter_cfg,
-        )
-        panel, mode_report = _ensure_mode_shape(panel, data_cfg=data_cfg)
-
-    with timed_stage("adapter_quality_audit", timings=timings, logger_name="factorlab.workflows.config_runner"):
-        adapter_audit_tables = _write_adapter_quality_audit_tables(
-            panel=panel,
-            data_cfg=data_cfg,
-            load_report=load_report,
-            out_dir=out,
-        )
+    ).run()
+    panel = adapter_stage.panel
+    load_report = adapter_stage.load_report
+    mode_report = adapter_stage.mode_report
+    adapter_validation_report = adapter_stage.adapter_validation_report
+    adapter_audit_tables = adapter_stage.adapter_audit_tables
+    data_adapter_registry = adapter_stage.adapter_registry
+    data_adapter_validator_registry = adapter_stage.adapter_validator_registry
 
     with timed_stage("build_factor_registry", timings=timings, logger_name="factorlab.workflows.config_runner"):
         factor_registry = build_factor_registry(
