@@ -166,6 +166,7 @@ python apps/run_from_config.py \
 - `factor.auto_discover` + `factor.plugin_dirs`: auto-discover custom `Factor` classes from plugin folders
 - `factor.plugins`: load plugin modules/class paths explicitly
 - `factor.plugin_on_error`: `raise` or `warn_skip` for plugin load conflicts/errors
+  - `warn_skip` policy is collision-safe: duplicate plugin names are skipped (built-ins stay active)
 - model plugins (`run_model_factor_benchmark`):
   - `--model-auto-discover` + `--model-plugin-dir`
   - `--model-plugin`

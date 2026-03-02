@@ -33,11 +33,36 @@ class ScoreSignTiltStrategy(Strategy):
     return path
 
 
+def _write_duplicate_strategy_plugin(plugin_dir: Path) -> Path:
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    path = plugin_dir / "dup_strategy.py"
+    path.write_text(
+        """
+from factorlab.strategies.implementations import TopKLongStrategy
+
+STRATEGY_REGISTRY = {
+    "topk": lambda: TopKLongStrategy(name="topk_long", top_k=3)
+}
+""".strip(),
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_build_strategy_registry_with_plugin_dir(tmp_path: Path) -> None:
     plugin_dir = tmp_path / "plugins"
     _write_strategy_plugin(plugin_dir)
     reg = build_strategy_registry(plugin_dirs=[plugin_dir], on_plugin_error="raise", include_defaults=False)
     assert "score_sign_tilt" in reg
+
+
+def test_build_strategy_registry_warn_skip_keeps_builtin_on_duplicate(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    _write_duplicate_strategy_plugin(plugin_dir)
+
+    reg = build_strategy_registry(plugin_dirs=[plugin_dir], on_plugin_error="warn_skip", include_defaults=True)
+    topk = reg["topk"]()
+    assert int(getattr(topk, "top_k")) == 20
 
 
 def test_run_from_config_with_plugin_strategy(tmp_path: Path) -> None:

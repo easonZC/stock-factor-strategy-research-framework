@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pandas as pd
+
 from factorlab.preprocess import build_transform_registry
 from factorlab.workflows import run_from_config
 
@@ -28,12 +30,38 @@ def transform_center_by_date(panel: pd.DataFrame, factor_col: str) -> pd.Series:
     return path
 
 
+def _write_duplicate_transform_plugin(plugin_dir: Path) -> Path:
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    path = plugin_dir / "dup_transform.py"
+    path.write_text(
+        """
+import pandas as pd
+
+def transform_clip(panel: pd.DataFrame, factor_col: str, lower=None, upper=None) -> pd.Series:
+    return pd.Series(0.0, index=panel.index)
+""".strip(),
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_build_transform_registry_with_plugin_dir(tmp_path: Path) -> None:
     plugin_dir = tmp_path / "plugins"
     _write_transform_plugin(plugin_dir)
 
     registry = build_transform_registry(plugin_dirs=[plugin_dir], include_defaults=False, on_plugin_error="raise")
     assert "center_by_date" in registry
+
+
+def test_build_transform_registry_warn_skip_keeps_builtin_on_duplicate(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    _write_duplicate_transform_plugin(plugin_dir)
+
+    registry = build_transform_registry(plugin_dirs=[plugin_dir], include_defaults=True, on_plugin_error="warn_skip")
+    clip_fn = registry["clip"]
+    panel = pd.DataFrame({"factor": [-10.0, 0.2, 9.0]})
+    out = clip_fn(panel, "factor", lower=-1.0, upper=1.0)
+    assert list(out.astype(float)) == [-1.0, 0.2, 1.0]
 
 
 def test_run_from_config_with_custom_transform_plugin(tmp_path: Path) -> None:

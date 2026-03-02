@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from factorlab.data import build_data_adapter_registry, build_data_adapter_validator_registry
+from factorlab.data.adapters import prepare_sina_panel, validate_sina_config
 from factorlab.workflows import run_from_config
 
 
@@ -50,6 +51,25 @@ def prepare_mock_panel(config: AdapterConfig) -> pd.DataFrame:
     return path
 
 
+def _write_duplicate_data_adapter_plugin(plugin_dir: Path) -> Path:
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    path = plugin_dir / "dup_adapter.py"
+    path.write_text(
+        """
+import pandas as pd
+from factorlab.config import AdapterConfig
+
+def validate_sina_config(config: AdapterConfig) -> None:
+    return None
+
+def prepare_sina_panel(config: AdapterConfig) -> pd.DataFrame:
+    return pd.DataFrame({"date": [], "asset": [], "close": []})
+""".strip(),
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_build_data_adapter_registry_with_plugin_dir(tmp_path: Path) -> None:
     plugin_dir = tmp_path / "plugins"
     _write_data_adapter_plugin(plugin_dir)
@@ -61,6 +81,20 @@ def test_build_data_adapter_registry_with_plugin_dir(tmp_path: Path) -> None:
         on_plugin_error="raise",
     )
     assert "mock" in vreg
+
+
+def test_build_data_adapter_registry_warn_skip_keeps_builtin_on_duplicate(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    _write_duplicate_data_adapter_plugin(plugin_dir)
+
+    reg = build_data_adapter_registry(plugin_dirs=[plugin_dir], include_defaults=True, on_plugin_error="warn_skip")
+    vreg = build_data_adapter_validator_registry(
+        plugin_dirs=[plugin_dir],
+        include_defaults=True,
+        on_plugin_error="warn_skip",
+    )
+    assert reg["sina"] is prepare_sina_panel
+    assert vreg["sina"] is validate_sina_config
 
 
 def test_run_from_config_with_custom_data_adapter_plugin(tmp_path: Path) -> None:
