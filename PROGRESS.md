@@ -84,8 +84,9 @@ For every complete run, append one new entry at the top of `Run History` with:
   - Tests passed: `13 passed`.
   - Config-driven CS run completed with report artifacts generated successfully.
 - Git actions:
-  - Local commit: pending
-  - Push: pending
+  - Local commit succeeded: `00f30b9` (`feat(research): add flexible preprocessing and warn-skip factor mode`).
+  - Push succeeded: `git push origin refactor/ssf-v2`.
+  - Existing PR updated: `https://github.com/easonZC/stock-factor-strategy-research-framework/pull/3`
 - Next run direction:
   - Add pluggable custom transform/factor hooks (user-defined Python path entry) to further improve research freedom without modifying framework code.
   - Add structured warning report in `run_meta.json` (skipped factors, fallback decisions, preprocessing coercions) for stronger auditability.
