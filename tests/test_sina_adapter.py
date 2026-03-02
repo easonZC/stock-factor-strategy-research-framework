@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from ssf.config import AdapterConfig
-from ssf.data.adapters import prepare_sina_panel
+from factorlab.config import AdapterConfig
+from factorlab.data.adapters import prepare_sina_panel
 
 
 def test_sina_adapter_basic(tmp_path: Path) -> None:

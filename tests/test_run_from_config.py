@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from ssf.workflows import run_from_config
+from factorlab.workflows import run_from_config
 
 
 def _write_yaml(path: Path, payload: dict) -> None:

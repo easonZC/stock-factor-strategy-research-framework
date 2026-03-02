@@ -1,10 +1,10 @@
-# SSF v2: Stock Factor + Strategy Research Framework
+# FactorLab v2: Stock Factor + Strategy Research Framework
 
 ## English Overview
-SSF v2 is a GitHub-safe, reusable quant research framework focused on report-grade factor research. The architecture keeps CLI scripts thin and places reusable logic in `src/ssf`, with dataclass-based configuration, synthetic end-to-end reproducibility, and no proprietary local paths. The framework supports both cross-sectional (CS) and time-series (TS) factor scopes, runs a leakage-aware preprocessing and evaluation pipeline, and produces auditable HTML reports with figures and CSV tables. In addition to research, SSF v2 includes lightweight strategy backtesting, model-factor training hooks, and CI-ready tests so the project can be used as a real engineering baseline instead of a one-off notebook bundle.
+FactorLab v2 is a GitHub-safe, reusable quant research framework focused on report-grade factor research. The architecture keeps CLI scripts thin and places reusable logic in `core/factorlab`, with dataclass-based configuration, synthetic end-to-end reproducibility, and no proprietary local paths. The framework supports both cross-sectional (CS) and time-series (TS) factor scopes, runs a leakage-aware preprocessing and evaluation pipeline, and produces auditable HTML reports with figures and CSV tables. In addition to research, FactorLab v2 includes lightweight strategy backtesting, model-factor training hooks, and CI-ready tests so the project can be used as a real engineering baseline instead of a one-off notebook bundle.
 
 ## 中文说明
-SSF v2 是一个面向实盘前研究流程的、可复用且 GitHub 安全的量化研究框架，核心目标是把因子研究提升到“可交付报告级别”。项目坚持“脚本薄、库层厚”的工程原则：命令行入口放在 `scripts/`，可复用逻辑统一放在 `src/ssf/`；配置以 dataclass 与 YAML 为核心，不依赖本地私有路径，不提交原始数据，支持在干净机器上通过 synthetic 数据完整跑通。框架提供 CS/TS 双因子研究路径、泄露防护的数据处理、可视化与统计检验、可选回测与模型因子扩展，并配套测试与 CI，使其适合作为团队化、长期维护的研究基建。
+FactorLab v2 是一个面向实盘前研究流程的、可复用且 GitHub 安全的量化研究框架，核心目标是把因子研究提升到“可交付报告级别”。项目坚持“脚本薄、库层厚”的工程原则：命令行入口放在 `apps/`，可复用逻辑统一放在 `core/factorlab/`；配置以 dataclass 与 YAML 为核心，不依赖本地私有路径，不提交原始数据，支持在干净机器上通过 synthetic 数据完整跑通。框架提供 CS/TS 双因子研究路径、泄露防护的数据处理、可视化与统计检验、可选回测与模型因子扩展，并配套测试与 CI，使其适合作为团队化、长期维护的研究基建。
 
 ## Core Capabilities
 - Factor interfaces: `Factor` base + built-in factors (`momentum_20`, `volatility_20`, `liquidity_shock`, `size`)
@@ -26,7 +26,7 @@ SSF v2 是一个面向实盘前研究流程的、可复用且 GitHub 安全的�
 
 ## Project Layout
 ```text
-src/ssf/
+core/factorlab/
   backtest/      # Backtest engine and result objects
   config.py      # Dataclass configs shared across modules
   data/          # IO, synthetic data, Sina adapter, universe filters
@@ -37,7 +37,7 @@ src/ssf/
   research/      # CS/TS research pipelines, statistics, report renderer
   strategies/    # Strategy base + implementations
   workflows/     # Config runner and benchmark workflows
-scripts/         # Thin CLI entrypoints
+apps/         # Thin CLI entrypoints
 configs/         # Config templates (TS/CS demos)
 examples/legacy/ # Quarantined legacy/internship reference code only
 docs/            # Processing and methodology notes
@@ -56,12 +56,12 @@ If your environment exposes `python` directly, you can use `python` instead of `
 
 ### A) Synthetic report (must run end-to-end)
 ```bash
-python scripts/demo_factor_research.py --out outputs/factor_report_demo
+python apps/demo_factor_research.py --out outputs/factor_report_demo
 ```
 
 ### B) Panel input
 ```bash
-python scripts/run_factor_research.py \
+python apps/run_factor_research.py \
   --panel <path> \
   --factors momentum_20,volatility_20,liquidity_shock \
   --horizons 1 5 10 20 \
@@ -70,20 +70,20 @@ python scripts/run_factor_research.py \
 
 ### C) Sina folder adapter
 ```bash
-python scripts/prepare_data.py --adapter sina --data-dir /stock_sina_update --out data/panel.parquet
-python scripts/run_factor_research.py --panel data/panel.parquet --out outputs/factor_report_sina
+python apps/prepare_data.py --adapter sina --data-dir /stock_sina_update --out data/panel.parquet
+python apps/run_factor_research.py --panel data/panel.parquet --out outputs/factor_report_sina
 ```
 
 ## Config-Driven One-Click Runs (TS/CS)
 
 ### CS example
 ```bash
-python scripts/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/cs_factor_demo
+python apps/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/cs_factor_demo
 ```
 
 ### TS example
 ```bash
-python scripts/run_from_config.py --config configs/ts_factor_demo.yaml --out outputs/ts_factor_demo
+python apps/run_from_config.py --config configs/ts_factor_demo.yaml --out outputs/ts_factor_demo
 ```
 
 ### Required config keys
@@ -125,7 +125,7 @@ outputs/factor_report/
 
 ## Testing and CI
 ```bash
-ruff check src scripts tests
+ruff check core apps tests
 pytest -q
 ```
 

@@ -3,10 +3,16 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ssf"
+name = "factorlab"
 version = "0.2.0"
 description = "GitHub-safe stock factor and strategy research framework"
 requires-python = ">=3.10"
+
+[tool.setuptools]
+package-dir = {"" = "core"}
+
+[tool.setuptools.packages.find]
+where = ["core"]
 
 [tool.ruff]
 line-length = 100

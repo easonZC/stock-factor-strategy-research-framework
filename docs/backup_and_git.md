@@ -8,14 +8,14 @@ A legacy baseline tag is created before the major refactor:
 ```bash
 DATE=$(date +%Y%m%d)
 git tag legacy_before_refactor_${DATE}
-git switch -c refactor/ssf-v2
+git switch -c refactor/factorlab-v2
 ```
 
 In this workspace, the tag used is:
 - `legacy_before_refactor_20260301`
 
 And the main refactor branch is:
-- `refactor/ssf-v2`
+- `refactor/factorlab-v2` (or any equivalent refactor branch name in your repo policy)
 
 ## Recommended per-run flow
 ```bash

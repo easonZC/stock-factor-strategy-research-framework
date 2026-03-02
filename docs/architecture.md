@@ -1,18 +1,18 @@
 # Architecture Overview
 
 ## Design objective
-SSF v2 separates orchestration from reusable research logic:
-- `scripts/` only parse CLI args and call service APIs.
-- `src/ssf/` contains testable domain modules.
+FactorLab v2 separates orchestration from reusable research logic:
+- `apps/` only parse CLI args and call service APIs.
+- `core/factorlab/` contains testable domain modules.
 
 ## Runtime flow
 1. Load panel data:
-- `ssf.data.read_panel(...)` for parquet/csv
-- `ssf.data.prepare_sina_panel(...)` for Sina folder
-- `ssf.data.generate_synthetic_panel(...)` for demos/tests
+- `factorlab.data.read_panel(...)` for parquet/csv
+- `factorlab.data.prepare_sina_panel(...)` for Sina folder
+- `factorlab.data.generate_synthetic_panel(...)` for demos/tests
 
 2. Compute factors:
-- `ssf.factors.apply_factors(...)`
+- `factorlab.factors.apply_factors(...)`
 - Supports built-in and model-based factors (`ModelFactor`)
 
 3. Preprocess:
@@ -22,8 +22,8 @@ SSF v2 separates orchestration from reusable research logic:
 - neutralization (size/industry/both/none)
 
 4. Research and reporting:
-- CS pipeline: `ssf.research.FactorResearchPipeline`
-- TS pipeline: `ssf.research.TimeSeriesFactorResearchPipeline`
+- CS pipeline: `factorlab.research.FactorResearchPipeline`
+- TS pipeline: `factorlab.research.TimeSeriesFactorResearchPipeline`
 - Outputs:
   - `index.html`
   - `assets/*.png`
@@ -31,11 +31,11 @@ SSF v2 separates orchestration from reusable research logic:
   - `config.json`
 
 5. Optional backtest:
-- Strategy weights from `ssf.strategies.*`
-- Performance from `ssf.backtest.run_backtest(...)`
+- Strategy weights from `factorlab.strategies.*`
+- Performance from `factorlab.backtest.run_backtest(...)`
 
 ## Config-driven one-click mode
-`ssf.workflows.run_from_config(...)` enforces explicit setup:
+`factorlab.workflows.run_from_config(...)` enforces explicit setup:
 - `factor_scope`: `cs` or `ts`
 - `eval_axis`: `cross_section` or `time`
 - `standardization`: scope-aware choice

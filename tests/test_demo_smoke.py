@@ -12,7 +12,7 @@ def test_demo_report_smoke(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[1]
     cmd = [
         sys.executable,
-        str(root / "scripts" / "demo_factor_research.py"),
+        str(root / "apps" / "demo_factor_research.py"),
         "--out",
         str(out_dir),
         "--assets",

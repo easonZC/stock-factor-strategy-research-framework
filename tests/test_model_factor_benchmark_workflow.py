@@ -6,9 +6,9 @@ import json
 
 import pandas as pd
 
-from ssf.config import SyntheticConfig, UniverseFilterConfig
-from ssf.data.synthetic import generate_synthetic_panel
-from ssf.workflows import ModelFactorBenchmarkConfig, run_model_factor_benchmark
+from factorlab.config import SyntheticConfig, UniverseFilterConfig
+from factorlab.data.synthetic import generate_synthetic_panel
+from factorlab.workflows import ModelFactorBenchmarkConfig, run_model_factor_benchmark
 
 
 def test_model_factor_benchmark_workflow_smoke(tmp_path) -> None:

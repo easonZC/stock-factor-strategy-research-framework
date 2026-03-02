@@ -5,8 +5,8 @@
 .env
 *.parquet
 *.csv
-!src/ssf/data/
-!src/ssf/data/**
+!core/factorlab/data/
+!core/factorlab/data/**
 
 # Python
 __pycache__/

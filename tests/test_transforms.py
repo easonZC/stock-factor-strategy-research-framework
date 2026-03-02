@@ -5,8 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ssf.config import NeutralizationConfig
-from ssf.preprocess.transforms import apply_winsorize, neutralize_factor
+from factorlab.config import NeutralizationConfig
+from factorlab.preprocess.transforms import apply_winsorize, neutralize_factor
 
 
 def test_winsorize_and_neutralize() -> None:

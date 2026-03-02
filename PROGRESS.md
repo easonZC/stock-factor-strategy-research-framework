@@ -53,32 +53,75 @@ For every complete run, append one new entry at the top of `Run History` with:
 
 ## Run History
 
+### Run 2026-03-01-005
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal: Rename confusing project naming (`scripts/src/ssf`) to professional names and address Codex PR P1 findings.
+- Changes:
+  - Renamed directories:
+    - `scripts/` -> `apps/`
+    - `src/` -> `core/`
+    - `core/ssf/` -> `core/factorlab/`
+  - Renamed Python package and imports:
+    - `ssf` -> `factorlab` across app entrypoints, library modules, tests, docs, and CI.
+  - Updated packaging/runtime config:
+    - `pyproject.toml` project name -> `factorlab`
+    - added setuptools package discovery for `core/`
+    - CI `PYTHONPATH` and lint paths updated to `core apps tests`
+    - `.gitignore` source allowlist updated to `core/factorlab/data/**`
+  - Applied Codex review fixes:
+    - `core/factorlab/strategies/implementations.py`: enforce `max_weight` with iterative capped allocation (no post-normalization cap violation).
+    - `core/factorlab/models/trainer.py`: validate OOF split config (`step_days > 0`, etc.) and fail fast to avoid infinite loops.
+  - Added regression tests:
+    - `tests/test_strategy_constraints.py`
+    - `tests/test_oof_split_validation.py`
+  - Updated docs/branding:
+    - renamed framework branding to `FactorLab v2` in README and report text
+    - updated architecture/backup docs for new directory conventions.
+- Validation commands:
+  - `ruff check core apps tests`
+  - `pytest -q`
+  - `python3 apps/demo_factor_research.py --out outputs/factor_report_demo_renamed`
+  - `python3 apps/run_factor_research.py --panel data/panel_demo.parquet --factors momentum_20,volatility_20 --horizons 1 5 10 20 --out outputs/factor_report_renamed`
+  - `python3 apps/prepare_data.py --adapter sina --data-dir /tmp/stock_sina_update --out data/panel_sina_renamed.parquet`
+  - `python3 apps/run_factor_research.py --panel data/panel_sina_renamed.parquet --out outputs/factor_report_sina_renamed`
+  - `python3 apps/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/cs_factor_demo_renamed`
+  - `python3 apps/run_from_config.py --config configs/ts_factor_demo.yaml --out outputs/ts_factor_demo_renamed`
+- Validation summary:
+  - Lint passed.
+  - Tests passed: `10 passed`.
+  - Renamed app entrypoints run successfully for synthetic/panel/sina/config workflows.
+  - Codex P1 issues now covered by direct assertions in new tests.
+- Git actions:
+  - Pending in this run: commit/push rename + bugfix set and update PR #2.
+- Next run direction:
+  - Finish any additional naming preferences (if needed) and keep all new contributions under `apps/` + `core/factorlab/`.
+
 ### Run 2026-03-01-004
 - Time: 2026-03-01 (America/Los_Angeles)
 - Goal: Start full SSF v2 refactor implementation for report-grade factor research and config-driven TS/CS workflows.
 - Changes:
   - Created baseline backup tag: `legacy_before_refactor_20260301`.
   - Created working branch: `refactor/ssf-v2`.
-  - Added `src/ssf/data/` package:
+  - Added `core/factorlab/data/` package:
     - panel IO + sanitization (`read_panel`, `write_panel`, `PanelSanitizationConfig`)
     - synthetic generator (`generate_synthetic_panel`)
     - Sina adapter with auto schema mapping + explicit warnings (`prepare_sina_panel`)
     - universe filter (`apply_universe_filter`)
   - Upgraded strategy implementations to match workflow config args and added `FlexibleLongShortStrategy`.
   - Expanded model layer with reusable registry (`ridge/rf/mlp/lgbm`) and OOF training pipeline (`OOFSplitConfig`, `train_oof_model_factor`).
-  - Updated `.gitignore` to keep hard constraints while allowing tracked source module `src/ssf/data/`.
+  - Updated `.gitignore` to keep hard constraints while allowing tracked source module `core/factorlab/data/`.
   - Rewrote `README.md` into EN+ZH professional project guide with required commands and clear architecture.
   - Added architecture doc: `docs/architecture.md`.
   - Updated CI demo smoke check to enforce `>=6` plot artifacts.
 - Validation commands:
   - `ruff check src scripts tests`
   - `pytest -q`
-  - `python3 scripts/demo_factor_research.py --out outputs/factor_report_demo`
-  - `python3 scripts/run_factor_research.py --panel data/panel_demo.parquet --factors momentum_20,volatility_20,liquidity_shock --horizons 1 5 10 20 --out outputs/factor_report`
-  - `python3 scripts/prepare_data.py --adapter sina --data-dir /tmp/stock_sina_update --out data/panel_sina.parquet`
-  - `python3 scripts/run_factor_research.py --panel data/panel_sina.parquet --out outputs/factor_report_sina`
-  - `python3 scripts/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/cs_factor_demo`
-  - `python3 scripts/run_from_config.py --config configs/ts_factor_demo.yaml --out outputs/ts_factor_demo`
+  - `python3 apps/demo_factor_research.py --out outputs/factor_report_demo`
+  - `python3 apps/run_factor_research.py --panel data/panel_demo.parquet --factors momentum_20,volatility_20,liquidity_shock --horizons 1 5 10 20 --out outputs/factor_report`
+  - `python3 apps/prepare_data.py --adapter sina --data-dir /tmp/stock_sina_update --out data/panel_sina.parquet`
+  - `python3 apps/run_factor_research.py --panel data/panel_sina.parquet --out outputs/factor_report_sina`
+  - `python3 apps/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/cs_factor_demo`
+  - `python3 apps/run_from_config.py --config configs/ts_factor_demo.yaml --out outputs/ts_factor_demo`
 - Validation summary:
   - Lint passed.
   - Tests passed: `6 passed`.
