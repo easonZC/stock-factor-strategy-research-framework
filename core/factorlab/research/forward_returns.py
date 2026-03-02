@@ -6,7 +6,6 @@ import pandas as pd
 
 
 def add_forward_returns(panel: pd.DataFrame, horizons: list[int], price_col: str = "close") -> pd.DataFrame:
-    """中文说明。"""
     df = panel.sort_values(["asset", "date"]).copy()
     for h in horizons:
         df[f"fwd_ret_{h}"] = (

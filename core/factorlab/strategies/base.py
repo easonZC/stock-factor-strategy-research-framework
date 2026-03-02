@@ -10,10 +10,11 @@ import pandas as pd
 
 @dataclass(slots=True)
 class Strategy(ABC):
-    """中文说明。"""
+    """策略基类，约束权重生成接口。"""
 
     name: str
 
     @abstractmethod
     def generate_weights(self, score_df: pd.DataFrame) -> pd.DataFrame:
-        """中文说明。"""
+        """根据打分面板生成组合权重。"""
+        raise NotImplementedError

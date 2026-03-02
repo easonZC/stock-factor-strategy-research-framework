@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""预处理模块聚合导出。"""
 
 from .factory import (
     build_transform_registry,

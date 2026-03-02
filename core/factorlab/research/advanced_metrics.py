@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""高级研究指标与风险收益统计。"""
 
 from __future__ import annotations
 
@@ -33,7 +33,6 @@ def summarize_quantile_profile(
     q_daily: pd.DataFrame,
     annualization_days: int = 252,
 ) -> pd.DataFrame:
-    """中文说明。"""
     q_cols = [c for c in q_daily.columns if c.startswith("Q")]
     rows: list[dict[str, float | str]] = []
     for col in q_cols + ["long_short"]:
@@ -77,7 +76,6 @@ def summarize_quantile_profile(
 
 
 def summarize_quantile_monotonicity(q_daily: pd.DataFrame) -> dict[str, float]:
-    """中文说明。"""
     q_cols = sorted([c for c in q_daily.columns if c.startswith("Q")], key=lambda x: int(x[1:]))
     if len(q_cols) < 3:
         return {
@@ -112,7 +110,6 @@ def compute_long_short_alpha_beta(
     market_returns: pd.Series,
     annualization_days: int = 252,
 ) -> dict[str, float]:
-    """中文说明。"""
     df = pd.DataFrame({"ls": long_short_returns, "mkt": market_returns}).dropna()
     if len(df) < 10:
         return {"ls_alpha_ann": np.nan, "ls_beta": np.nan, "ls_r2": np.nan}
@@ -142,7 +139,6 @@ def compute_factor_rank_autocorr(
     factor_col: str,
     lag: int = 1,
 ) -> pd.DataFrame:
-    """中文说明。"""
     if lag < 1:
         raise ValueError("lag must be >= 1")
     wide = df.pivot(index="date", columns="asset", values=factor_col).sort_index()

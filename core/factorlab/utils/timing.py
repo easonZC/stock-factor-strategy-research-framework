@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""阶段计时与性能记录工具。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ def timed_stage(
     timings: dict[str, float] | None = None,
     logger_name: str = "factorlab",
 ) -> Iterator[None]:
-    """中文说明。"""
     start = time.perf_counter()
     try:
         yield

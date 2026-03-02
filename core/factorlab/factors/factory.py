@@ -22,7 +22,6 @@ FactorCtor = Callable[[], Factor]
 
 
 def default_factor_registry() -> dict[str, FactorCtor]:
-    """中文说明。"""
     return {
         "momentum_20": lambda: MomentumFactor(name="momentum_20", lookback=20),
         "volatility_20": lambda: VolatilityFactor(name="volatility_20", window=20),
@@ -139,7 +138,6 @@ def _merge_registry(
 
 
 def discover_factor_registry(plugin_dirs: list[str | Path], on_error: str = "raise") -> dict[str, FactorCtor]:
-    """中文说明。"""
     reg: dict[str, FactorCtor] = {}
     for raw_dir in plugin_dirs:
         path = Path(raw_dir).expanduser()
@@ -240,7 +238,6 @@ def build_factor_registry(
     plugin_specs: list[Any] | None = None,
     on_plugin_error: str = "raise",
 ) -> dict[str, FactorCtor]:
-    """中文说明。"""
     registry = default_factor_registry()
     if plugin_dirs:
         registry = _merge_registry(

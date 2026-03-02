@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""研究流水线能力聚合导出。"""
 
 from .forward_returns import add_forward_returns
 from .pipeline import FactorResearchPipeline

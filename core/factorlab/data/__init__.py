@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""数据读写、适配器注册与股票池过滤模块导出。"""
 
 from .adapters import prepare_sina_panel, prepare_stooq_panel
 from .factory import (
@@ -12,8 +12,10 @@ from .factory import (
     load_data_adapter_validator_plugins,
 )
 from .io import (
+    PanelDirectoryReadReport,
     PanelSanitizationConfig,
     PanelSanitizationReport,
+    read_panel_directory,
     read_panel,
     write_panel,
 )
@@ -23,6 +25,7 @@ from .universe import UniverseFilterReport, apply_universe_filter
 __all__ = [
     "PanelSanitizationConfig",
     "PanelSanitizationReport",
+    "PanelDirectoryReadReport",
     "UniverseFilterReport",
     "apply_universe_filter",
     "build_data_adapter_registry",
@@ -36,6 +39,7 @@ __all__ = [
     "load_data_adapter_validator_plugins",
     "prepare_sina_panel",
     "prepare_stooq_panel",
+    "read_panel_directory",
     "read_panel",
     "write_panel",
 ]

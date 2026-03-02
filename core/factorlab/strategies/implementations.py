@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""内置策略权重生成实现。"""
 
 from __future__ import annotations
 

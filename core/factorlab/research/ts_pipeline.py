@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""时序因子研究流水线实现。"""
 
 from __future__ import annotations
 

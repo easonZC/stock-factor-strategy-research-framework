@@ -10,26 +10,25 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-ROOT = Path(__file__).resolve().parents[1]
-CORE_PATH = ROOT / "core"
-if str(CORE_PATH) not in sys.path:
-    sys.path.insert(0, str(CORE_PATH))
+from _bootstrap import ensure_core_path
+
+ROOT = ensure_core_path(__file__)
 
 from factorlab.workflows import compose_run_config_with_alias_report, validate_run_config_schema  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Lint run config before executing workflow.",
+        description="运行前检查配置结构与潜在风险。",
         epilog=(
-            "Examples:\n"
+            "示例:\n"
             "  python apps/lint_config.py --config configs/cs_factor.yaml\n"
+            "  python apps/lint_config.py --config configs/ts_factor.yaml\n"
             "  python apps/lint_config.py --config configs/cs_factor.yaml --set run.std=cs_rank --set research.q=10\n"
             "  python apps/lint_config.py --config configs/cs_factor.yaml --strict\n"
             "  python apps/lint_config.py --config configs/cs_factor.yaml --json\n"

@@ -3,22 +3,18 @@
 from __future__ import annotations
 
 import argparse
-import sys
-from pathlib import Path
+from _bootstrap import ensure_core_path
 
-ROOT = Path(__file__).resolve().parents[1]
-CORE_PATH = ROOT / "core"
-if str(CORE_PATH) not in sys.path:
-    sys.path.insert(0, str(CORE_PATH))
+ensure_core_path(__file__)
 
 from factorlab.models import train_model_factor
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Train model factor using synthetic panel",
+        description="用合成面板训练并保存模型因子。",
         epilog=(
-            "Examples:\n"
+            "示例:\n"
             "  python apps/train_model_factor.py --model ridge --out artifacts/models/ridge_model_factor.joblib\n"
             "  python apps/train_model_factor.py --model rf --out artifacts/models/rf_model_factor.joblib\n"
         ),

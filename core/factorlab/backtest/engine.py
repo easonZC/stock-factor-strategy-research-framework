@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""回测引擎与绩效计算实现。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from factorlab.config import BacktestConfig
 
 @dataclass(slots=True)
 class BacktestResult:
-    """中文说明。"""
 
     daily: pd.DataFrame
     metrics: pd.DataFrame
@@ -58,7 +57,6 @@ def _scale_gross(row: pd.Series, target_gross: float, max_gross_exposure: float 
 
 
 def _finalize_caps(row: pd.Series, config: BacktestConfig) -> pd.Series:
-    """中文说明。"""
     out = _clip_abs_weight(row, max_abs_weight=config.max_abs_weight)
     out = _enforce_net_limit(out, max_net_exposure=config.max_net_exposure)
     if config.max_gross_exposure is not None:
@@ -180,7 +178,6 @@ def _alpha_beta(returns: pd.Series, benchmark: pd.Series, ann_days: int) -> tupl
 
 
 def run_backtest(panel: pd.DataFrame, weights: pd.DataFrame, config: BacktestConfig) -> BacktestResult:
-    """中文说明。"""
     df = panel[["date", "asset", "close"]].copy().sort_values(["asset", "date"])
     df["asset_ret"] = df.groupby("asset")["close"].pct_change()
     ret_wide = df.pivot(index="date", columns="asset", values="asset_ret").sort_index().fillna(0.0)

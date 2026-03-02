@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""相关功能测试。"""
 
 from __future__ import annotations
 

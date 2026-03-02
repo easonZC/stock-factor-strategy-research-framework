@@ -12,7 +12,6 @@ from factorlab.factors.base import Factor
 
 @dataclass(slots=True)
 class MomentumFactor(Factor):
-    """中文说明。"""
 
     lookback: int = 20
 
@@ -24,7 +23,6 @@ class MomentumFactor(Factor):
 
 @dataclass(slots=True)
 class VolatilityFactor(Factor):
-    """中文说明。"""
 
     window: int = 20
 
@@ -37,7 +35,6 @@ class VolatilityFactor(Factor):
 
 @dataclass(slots=True)
 class LiquidityShockFactor(Factor):
-    """中文说明。"""
 
     window: int = 20
 
@@ -51,7 +48,6 @@ class LiquidityShockFactor(Factor):
 
 @dataclass(slots=True)
 class SizeFactor(Factor):
-    """中文说明。"""
 
     def compute(self, panel: pd.DataFrame) -> pd.Series:
         return -np.log1p(panel["mkt_cap"].astype(float))

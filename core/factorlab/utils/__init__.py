@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""通用工具函数聚合导出。"""
 
 from .date_indexer import DateFrameIndexer
 from .logging_utils import configure_logging, get_logger

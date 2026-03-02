@@ -7,13 +7,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-from pathlib import Path
+from _bootstrap import ensure_core_path
 
-ROOT = Path(__file__).resolve().parents[1]
-CORE_PATH = ROOT / "core"
-if str(CORE_PATH) not in sys.path:
-    sys.path.insert(0, str(CORE_PATH))
+ensure_core_path(__file__)
 
 from factorlab.ops import OutputRetentionManager, RetentionPolicy
 from factorlab.utils import configure_logging, get_logger

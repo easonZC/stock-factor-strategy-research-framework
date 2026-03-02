@@ -1,56 +1,32 @@
-﻿# Leakage-Safe Data Processing Notes
+# 数据处理与防泄露说明
 
-This framework enforces conservative preprocessing defaults for factor research:
+## 1. 去极值
+- `quantile`：按分位点截断
+- `mad`：按中位数与 MAD 截断
 
-1. Winsorization
-- `quantile`: clip each date's cross-section by quantiles.
-- `mad`: clip by median +/- k * MAD.
+## 2. 标准化
+- 截面：`cs_zscore` / `cs_rank` / `cs_robust_zscore`
+- 时序：`ts_rolling_zscore`
 
-2. Standardization
-- Cross-sectional z-score (`cs_zscore`)
-- Cross-sectional rank (`cs_rank`)
-- Cross-sectional robust z-score (`cs_robust_zscore`, median/MAD)
-- Time-series rolling z-score per asset (`ts_rolling_zscore`)
+## 3. 缺失值处理
+- 默认：`drop`
+- 可选：`fill_zero` / `ffill_by_asset` / `cs_median_by_date` / `keep`
 
-3. Missing handling
-- Default policy is strict `drop` to avoid hidden assumptions.
-- Optional policies for exploratory research:
-  - `fill_zero`
-  - `ffill_by_asset` (past-only forward fill per asset)
-  - `cs_median_by_date` (same-date cross-sectional median fill)
-  - `keep` (preserve missing values for downstream handling)
-
-4. Configurable preprocess order
-- CS pipeline supports ordered steps via `research.preprocess_steps`:
+## 4. 处理中序
+- `research.preprocess_steps` 支持有序配置：
   - `winsorize`
   - `standardize`
   - `neutralize`
-- This allows flexible A/B experiments without changing code.
 
-5. Neutralization
-- Supports `size`, `industry`, `both`, `none`.
-- Residualization is performed cross-sectionally per date.
-- No-lookahead guarantee: only same-date exposures are used.
+## 5. 中性化
+- 支持 `none/size/industry/both`
+- 按交易日做截面回归残差化
+- 不使用未来信息
 
-6. Forward returns
-- Computed by per-asset future price shift.
-- Strategy backtest shifts weights by one day to avoid lookahead.
+## 6. 前瞻收益与回测
+- 前瞻收益按资产未来价格移位计算
+- 回测默认有执行延迟，避免同日未来函数
 
-7. TS / CS split defaults
-- TS scope:
-  - default standardization: `ts_rolling_zscore`
-  - evaluation axis: `time`
-  - quantiles are assigned in a rolling time window per asset.
-- CS scope:
-  - default standardization: `cs_zscore`
-  - evaluation axis: `cross_section`
-  - optional per-date winsorization and size/industry neutralization.
-
-8. Custom transform plugins
-- Config-driven custom transforms are supported via:
-  - `research.transform_auto_discover`
-  - `research.transform_plugin_dirs` / `research.transform_plugins`
-  - `research.custom_transforms` list
-- Each transform callable must return a `Series` aligned to panel rows.
-- Per-item failure policy is explicit: `on_error: raise|warn_skip`.
-- Built-in transforms include `clip`, `signed_log1p`, `ts_rolling_zscore`, `cs_rank`, `cs_zscore`.
+## 7. TS / CS 默认行为
+- TS：默认 `ts_rolling_zscore`，评估轴 `time`
+- CS：默认 `cs_zscore`，评估轴 `cross_section`

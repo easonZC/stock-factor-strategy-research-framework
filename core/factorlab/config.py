@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""框架级数据类配置定义。"""
 
 from __future__ import annotations
 

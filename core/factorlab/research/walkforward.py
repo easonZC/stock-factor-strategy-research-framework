@@ -1,4 +1,4 @@
-"""模块说明。"""
+"""时序滚动训练/验证切分工具。"""
 
 from __future__ import annotations
 
@@ -31,7 +31,6 @@ class WalkForwardConfig:
 
 @dataclass(slots=True)
 class WalkForwardResult:
-    """中文说明。"""
 
     oos_scores: pd.DataFrame
     fold_summary: pd.DataFrame
