@@ -1,4 +1,4 @@
-"""Time-series factor research pipeline for single-asset/time-axis evaluation."""
+"""单资产时间轴评估的时序因子研究流水线。"""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ TSStandardizeMode = Literal["ts_rolling_zscore", "zscore", "none"]
 
 @dataclass(slots=True)
 class TSResearchConfig:
-    """Settings for TS factor analysis."""
+    """时序因子分析配置。"""
 
     horizons: list[int] = field(default_factory=lambda: [1, 5, 10, 20])
     quantiles: int = 5
@@ -156,7 +156,7 @@ def _compute_time_ic_series(
         if len(g) < max(min_obs_per_asset, minp):
             continue
         g["ic"] = g[factor_col].rolling(window=window, min_periods=minp).corr(g[ret_col])
-        # Approximate rolling RankIC via per-asset ranks to keep implementation light and stable.
+        # 用资产内排序近似滚动 RankIC，保持实现轻量且稳定。
         ranked_factor = g[factor_col].rank(method="average")
         ranked_ret = g[ret_col].rank(method="average")
         g["rank_ic"] = ranked_factor.rolling(window=window, min_periods=minp).corr(ranked_ret)
@@ -169,7 +169,7 @@ def _compute_time_ic_series(
 
 
 class TimeSeriesFactorResearchPipeline:
-    """Generate TS-factor report outputs (tables + figures + HTML)."""
+    """生成 TS 因子研究输出（表格、图形、HTML 报告）。"""
 
     def __init__(self, config: TSResearchConfig):
         self.config = config

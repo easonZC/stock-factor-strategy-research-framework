@@ -1,4 +1,4 @@
-"""Single entrypoint for config-driven TS/CS factor research runs."""
+"""配置驱动 TS/CS 因子研究统一入口。"""
 
 from __future__ import annotations
 

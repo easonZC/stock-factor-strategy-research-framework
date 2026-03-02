@@ -1,4 +1,4 @@
-"""External data adapters with explicit warnings and schema mapping."""
+"""外部数据适配器：提供显式告警、字段映射与配置校验。"""
 
 from __future__ import annotations
 
@@ -54,14 +54,14 @@ def _read_csv_robust(path: Path) -> pd.DataFrame:
     for enc in encodings:
         try:
             return pd.read_csv(path, encoding=enc)
-        except Exception as exc:  # pragma: no cover - exercised by environment variance
+        except Exception as exc:  # pragma: no cover - 依赖环境编码差异
             last_error = exc
     assert last_error is not None
     raise last_error
 
 
 def prepare_sina_panel(config: AdapterConfig) -> pd.DataFrame:
-    """Best-effort Sina folder adapter with explicit warnings on schema mismatch."""
+    """Sina 文件夹适配器（尽力而为，字段异常显式告警）。"""
     data_dir = Path(config.data_dir)
     if not data_dir.exists() or not data_dir.is_dir():
         raise FileNotFoundError(f"Sina data-dir not found or not a directory: {data_dir}")
@@ -169,13 +169,13 @@ def _normalize_stooq_symbol(symbol: str) -> str:
 def _fetch_stooq_csv(symbol: str, timeout_sec: int) -> pd.DataFrame:
     query = urlencode({"s": _normalize_stooq_symbol(symbol), "i": "d"})
     url = f"https://stooq.com/q/d/l/?{query}"
-    with urlopen(url, timeout=int(timeout_sec)) as resp:  # nosec B310 - fixed host + encoded query only
+    with urlopen(url, timeout=int(timeout_sec)) as resp:  # nosec B310 - 固定域名 + 编码参数
         payload = resp.read().decode("utf-8", errors="replace")
     return pd.read_csv(io.StringIO(payload))
 
 
 def prepare_stooq_panel(config: AdapterConfig) -> pd.DataFrame:
-    """Download daily OHLCV from public Stooq endpoint into canonical panel schema."""
+    """从公开 Stooq 接口下载日频 OHLCV 并标准化为面板格式。"""
     symbols = [str(s).strip() for s in config.symbols if str(s).strip()]
     if not symbols:
         raise ValueError("Stooq adapter requires non-empty symbols list.")
@@ -259,3 +259,32 @@ def prepare_stooq_panel(config: AdapterConfig) -> pd.DataFrame:
         panel["asset"].nunique(),
     )
     return panel
+
+
+def validate_sina_config(config: AdapterConfig) -> None:
+    """校验 Sina 适配器配置，失败时直接抛错。"""
+    data_dir_raw = str(config.data_dir or "").strip()
+    if not data_dir_raw:
+        raise ValueError("Sina 适配器要求提供非空 data_dir。")
+    data_dir = Path(data_dir_raw).expanduser()
+    if not data_dir.exists() or not data_dir.is_dir():
+        raise FileNotFoundError(f"Sina data_dir 不存在或不是目录: {data_dir}")
+    if int(config.min_rows_per_asset) <= 0:
+        raise ValueError("Sina 适配器要求 min_rows_per_asset > 0。")
+
+
+def validate_stooq_config(config: AdapterConfig) -> None:
+    """校验 Stooq 适配器配置，失败时直接抛错。"""
+    symbols = [str(s).strip() for s in config.symbols if str(s).strip()]
+    if not symbols:
+        raise ValueError("Stooq 适配器要求 symbols 非空。")
+    if int(config.request_timeout_sec) <= 0:
+        raise ValueError("Stooq 适配器要求 request_timeout_sec > 0。")
+    if int(config.min_rows_per_asset) <= 0:
+        raise ValueError("Stooq 适配器要求 min_rows_per_asset > 0。")
+    if config.start_date:
+        if pd.isna(pd.to_datetime(config.start_date, errors="coerce")):
+            raise ValueError(f"Stooq start_date 非法: {config.start_date}")
+    if config.end_date:
+        if pd.isna(pd.to_datetime(config.end_date, errors="coerce")):
+            raise ValueError(f"Stooq end_date 非法: {config.end_date}")

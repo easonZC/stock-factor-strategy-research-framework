@@ -1,11 +1,11 @@
-"""Tests for data adapter plugin discovery and config integration."""
+"""数据适配器插件发现与配置集成测试。"""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from factorlab.data import build_data_adapter_registry
+from factorlab.data import build_data_adapter_registry, build_data_adapter_validator_registry
 from factorlab.workflows import run_from_config
 
 
@@ -16,6 +16,12 @@ def _write_data_adapter_plugin(plugin_dir: Path) -> Path:
         """
 import pandas as pd
 from factorlab.config import AdapterConfig
+
+def validate_mock_config(config: AdapterConfig) -> None:
+    if not config.symbols:
+        raise ValueError("mock adapter requires at least one symbol")
+    if int(config.min_rows_per_asset) <= 0:
+        raise ValueError("mock adapter requires min_rows_per_asset > 0")
 
 def prepare_mock_panel(config: AdapterConfig) -> pd.DataFrame:
     dates = pd.date_range("2023-01-02", periods=160, freq="B")
@@ -49,6 +55,12 @@ def test_build_data_adapter_registry_with_plugin_dir(tmp_path: Path) -> None:
     _write_data_adapter_plugin(plugin_dir)
     reg = build_data_adapter_registry(plugin_dirs=[plugin_dir], include_defaults=False, on_plugin_error="raise")
     assert "mock" in reg
+    vreg = build_data_adapter_validator_registry(
+        plugin_dirs=[plugin_dir],
+        include_defaults=False,
+        on_plugin_error="raise",
+    )
+    assert "mock" in vreg
 
 
 def test_run_from_config_with_custom_data_adapter_plugin(tmp_path: Path) -> None:
@@ -67,6 +79,8 @@ def test_run_from_config_with_custom_data_adapter_plugin(tmp_path: Path) -> None
             "adapter_auto_discover": True,
             "adapter_plugin_dirs": [str(plugin_dir)],
             "adapter_plugin_on_error": "raise",
+            "symbols": ["AAA"],
+            "min_rows_per_asset": 20,
             "fields_required": ["date", "asset", "close", "volume", "mkt_cap", "industry"],
         },
         "factor": {"names": ["momentum_20", "volatility_20"]},
@@ -85,5 +99,40 @@ def test_run_from_config_with_custom_data_adapter_plugin(tmp_path: Path) -> None
     meta = json.loads(res.run_meta_json.read_text(encoding="utf-8"))
     assert meta["data"]["config"]["adapter"] == "mock"
     assert "mock" in meta["data"]["adapter_plugin_config"]["registry_adapters"]
+    assert "mock" in meta["data"]["adapter_validator_plugin_config"]["registry_validators"]
+    assert meta["data"]["adapter_validation_report"]["validated"] is True
     assert meta["data"]["load_report"]["panel_profile"]["source"] == "adapter"
     assert float(meta["data"]["load_report"]["adapter_load_seconds"]) >= 0.0
+    assert Path(meta["outputs"]["adapter_quality_audit_csv"]).exists()
+
+
+def test_run_from_config_custom_adapter_validation_hook_blocks_bad_config(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    _write_data_adapter_plugin(plugin_dir)
+
+    cfg = {
+        "run": {
+            "factor_scope": "cs",
+            "eval_axis": "cross_section",
+            "standardization": "cs_rank",
+        },
+        "data": {
+            "mode": "panel",
+            "adapter": "mock",
+            "adapter_auto_discover": True,
+            "adapter_plugin_dirs": [str(plugin_dir)],
+            "adapter_plugin_on_error": "raise",
+            "symbols": [],
+            "fields_required": ["date", "asset", "close", "volume", "mkt_cap", "industry"],
+        },
+        "factor": {"names": ["momentum_20"]},
+        "research": {"horizons": [1, 5], "quantiles": 5, "ic_rolling_window": 20},
+        "backtest": {"enabled": False},
+    }
+
+    try:
+        run_from_config(cfg, out_dir=tmp_path / "out_bad_adapter")
+    except ValueError as exc:
+        assert "requires at least one symbol" in str(exc)
+    else:
+        raise AssertionError("Expected adapter validation hook to block invalid config")

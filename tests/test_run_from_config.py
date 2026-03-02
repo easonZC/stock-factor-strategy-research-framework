@@ -1,4 +1,4 @@
-"""Smoke tests for config-driven TS/CS one-click runner."""
+"""配置驱动 TS/CS 一键运行冒烟测试。"""
 
 from __future__ import annotations
 
@@ -55,6 +55,7 @@ def test_run_from_config_cs_smoke(tmp_path) -> None:
     assert result.run_meta_json.exists()
     assert result.run_manifest_json.exists()
     assert result.backtest_summary_csv is not None and result.backtest_summary_csv.exists()
+    assert "Data Adapter Audit" in result.index_html.read_text(encoding="utf-8")
 
     meta = json.loads(result.run_meta_json.read_text(encoding="utf-8"))
     assert meta["scope"]["factor_scope"] == "cs"
@@ -63,6 +64,8 @@ def test_run_from_config_cs_smoke(tmp_path) -> None:
     assert "warning_summary" in meta
     assert "panel_profile" in meta["data"]["load_report"]
     assert "adapter_load_seconds" in meta["data"]["load_report"]
+    assert "adapter_validation_report" in meta["data"]
+    assert Path(meta["outputs"]["adapter_quality_audit_csv"]).exists()
     assert "transform_plugin_config" in meta["research"]
 
 
@@ -113,6 +116,8 @@ def test_run_from_config_ts_smoke(tmp_path) -> None:
     assert "warning_summary" in meta
     assert "panel_profile" in meta["data"]["load_report"]
     assert "adapter_load_seconds" in meta["data"]["load_report"]
+    assert "adapter_quality_audit_csv" in meta["outputs"]
+    assert Path(meta["outputs"]["adapter_quality_audit_csv"]).exists()
     assert "custom_transform_report" in meta["research"]
 
 

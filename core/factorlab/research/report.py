@@ -1,4 +1,4 @@
-﻿"""HTML report renderer for factor research outputs."""
+﻿"""因子研究 HTML 报告渲染器。"""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ def render_report(
     figure_map: dict[str, list[Path]],
     table_map: dict[str, list[Path]],
 ) -> Path:
-    """Generate a lightweight static HTML report with figures and table links."""
+    """生成轻量静态 HTML 报告（图表与表格链接）。"""
     rows = []
     rows.append("<h1>Stock Factor Research Report</h1>")
     rows.append(
@@ -37,6 +37,24 @@ def render_report(
             rel = t.relative_to(out_dir).as_posix()
             rows.append(f"<li><a href='{rel}'>{rel}</a></li>")
         rows.append("</ul>")
+
+    # 追加数据适配器质量审计表（若存在）
+    audit_dir = out_dir / "tables" / "data"
+    if audit_dir.exists():
+        audit_files = sorted(audit_dir.glob("*.csv"))
+        if audit_files:
+            rows.append("<h2>Data Adapter Audit</h2>")
+            rows.append("<ul>")
+            for t in audit_files:
+                rel = t.relative_to(out_dir).as_posix()
+                rows.append(f"<li><a href='{rel}'>{rel}</a></li>")
+            rows.append("</ul>")
+
+            summary_path = audit_dir / "adapter_quality_audit.csv"
+            if summary_path.exists():
+                summary = pd.read_csv(summary_path)
+                rows.append("<h3>Adapter Quality Summary (Preview)</h3>")
+                rows.append(summary.to_html(index=False))
 
     html = "\n".join(rows)
     out = out_dir / "index.html"

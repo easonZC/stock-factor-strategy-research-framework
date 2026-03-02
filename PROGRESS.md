@@ -53,6 +53,83 @@ For every complete run, append one new entry at the top of `Run History` with:
 
 ## Run History
 
+### Run 2026-03-01-017
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal: 实现两项数据层增强并提升可读性：
+  - 自定义 data adapter 增加 `validate_config` 运行前校验钩子；
+  - 报告输出新增 adapter 质量审计表（覆盖率/缺失/最小样本阈值等）；
+  - 同步将核心改动模块注释与文档字符串调整为简练中文。
+- Changes:
+  - 数据适配器校验钩子（内置 + 插件）：
+    - `core/factorlab/data/factory.py`
+      - 新增 validator 注册体系：
+        - `default_data_adapter_validator_registry`
+        - `discover_data_adapter_validator_registry`
+        - `load_data_adapter_validator_plugins`
+        - `build_data_adapter_validator_registry`
+      - 支持插件自动发现 `validate_<name>_config(config)` 约定。
+      - 支持插件显式导出：
+        - `DATA_ADAPTER_VALIDATORS`
+        - `get_data_adapter_validators()`
+    - `core/factorlab/data/adapters.py`
+      - 新增内置 validator：
+        - `validate_sina_config`
+        - `validate_stooq_config`
+    - `core/factorlab/workflows/config_runner.py`
+      - 新增运行阶段：
+        - `build_data_adapter_validator_registry`
+        - `validate_data_adapter_config`
+      - 在加载数据前执行 adapter 配置校验，坏配置提前失败。
+      - `run_meta.json` 新增：
+        - `data.adapter_validation_report`
+        - `data.adapter_validator_plugin_config`
+    - `apps/prepare_data.py`
+      - 同步接入 validator registry，在 `prepare_data` 入口也执行加载前校验。
+    - `core/factorlab/data/__init__.py`
+      - 导出 validator 相关 API。
+  - 报告新增 adapter 质量审计表：
+    - `core/factorlab/workflows/config_runner.py`
+      - 新增 `adapter_quality_audit` 阶段，生成：
+        - `tables/data/adapter_quality_audit.csv`
+        - `tables/data/field_missing_rates.csv`
+        - `tables/data/asset_row_counts.csv`
+        - `tables/data/date_coverage.csv`
+      - 指标覆盖：字段缺失率、覆盖率、资产样本阈值达标率、按日覆盖率统计等。
+      - `outputs` 与 `data.adapter_audit_tables` 写入上述路径。
+    - `core/factorlab/research/report.py`
+      - HTML 报告自动追加 `Data Adapter Audit` 区块，并展示审计表链接与摘要预览。
+  - 模板与文档更新：
+    - `examples/plugins/data_adapters/README.md`
+    - `examples/plugins/data_adapters/mock_feed.py`（新增 `validate_mock_feed_config`）
+    - `README.md`
+    - `docs/architecture.md`
+  - 中文注释优化（本轮涉及核心模块）：
+    - `core/factorlab/workflows/config_runner.py`
+    - `core/factorlab/research/pipeline.py`
+    - `core/factorlab/research/ts_pipeline.py`
+    - `core/factorlab/data/*`
+    - `apps/generate_run_config.py`
+    - `apps/run_from_config.py`
+    - `apps/prepare_data.py`
+    - 相关测试文件 docstring。
+- Validation commands:
+  - `python3 -m ruff check core apps tests`
+  - `python3 -m pytest -q tests/test_data_adapter_plugins.py tests/test_run_from_config.py`
+  - `python3 -m pytest -q tests/test_run_from_config.py::test_run_from_config_cs_smoke`
+  - `python3 -m pytest -q`
+- Validation summary:
+  - Lint passed.
+  - Targeted tests passed: `9 passed`, `1 passed`.
+  - Full test suite passed: `55 passed`.
+- Git actions:
+  - New branch: `feat/adapter-validate-audit-20260301`
+  - Commit: `bfbd11c` (`feat(data): add adapter config validators and quality audit tables`)
+  - Push succeeded: `git push -u origin feat/adapter-validate-audit-20260301`
+  - PR created: `https://github.com/easonZC/stock-factor-strategy-research-framework/pull/10`
+- Next run direction:
+  - 将 adapter 审计指标在 HTML 中增加可视化图（覆盖率时间序列/字段缺失热力）。
+  - 为 adapter validator 增加可选“告警级返回”规范（结构化 warning code）。
+
 ### Run 2026-03-01-016
 - Time: 2026-03-01 (America/Los_Angeles)
 - Goal: Continue framework flexibility improvements with configurable custom preprocess transforms (pluginized and config-driven), plus docs/tests polish.

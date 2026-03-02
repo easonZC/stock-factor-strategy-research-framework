@@ -1,7 +1,8 @@
-"""Example custom data adapter plugin.
+"""自定义数据适配器示例。
 
-Auto-discovered adapter name from function:
-  prepare_mock_feed_panel -> "mock_feed"
+自动识别规则：
+- prepare_mock_feed_panel -> 适配器名 `mock_feed`
+- validate_mock_feed_config -> 校验钩子绑定到 `mock_feed`
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from factorlab.config import AdapterConfig
 
 
 def prepare_mock_feed_panel(config: AdapterConfig) -> pd.DataFrame:
-    """Generate a synthetic-like custom feed for plugin demonstration."""
+    """生成用于演示的 mock 行情面板。"""
     assets = [f"MOCK{i:02d}" for i in range(1, 7)]
     dates = pd.date_range(config.start_date or "2022-01-03", periods=220, freq="B")
     rows: list[dict[str, object]] = []
@@ -52,3 +53,10 @@ def prepare_mock_feed_panel(config: AdapterConfig) -> pd.DataFrame:
         panel = panel[panel["asset"].isin(set(keep))].copy()
     return panel.reset_index(drop=True)
 
+
+def validate_mock_feed_config(config: AdapterConfig) -> None:
+    """运行前校验 mock 适配器配置。"""
+    if int(config.request_timeout_sec) <= 0:
+        raise ValueError("mock_feed 要求 request_timeout_sec > 0。")
+    if int(config.min_rows_per_asset) <= 0:
+        raise ValueError("mock_feed 要求 min_rows_per_asset > 0。")
