@@ -89,9 +89,11 @@ For every complete run, append one new entry at the top of `Run History` with:
     - `a471653` (`feat(m2): align strategy interfaces and stabilize report entrypoint`)
     - `bee6ae1` (`feat(m3): add reusable model registry and oof model-factor training`)
     - `bfb8177` (`docs(m4): clarify ts/cs preprocessing defaults and leakage notes`)
-  - Pending in this run: final `M5` docs/CI commit + push branch + PR update.
+    - `508ada3` (`docs(m5): polish readme, architecture docs, ci smoke and progress log`)
+  - Push succeeded: `git push -u origin refactor/ssf-v2`.
+  - PR created: `https://github.com/easonZC/stock-factor-strategy-research-framework/pull/2`
 - Next run direction:
-  - Finalize docs/CI polish commit (`M5`), push `refactor/ssf-v2`, and open/update PR against `main`.
+  - Continue follow-up changes on `refactor/ssf-v2` and update PR #2 until merge.
   - Add deeper regression tests for report-table field completeness and Newey-West edge cases.
 
 ### Run 2026-03-01-003
