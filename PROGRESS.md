@@ -94,9 +94,10 @@ For every complete run, append one new entry at the top of `Run History` with:
 - Git actions:
   - Local commit succeeded: `cf6eeb0` (`refactor(naming): rename to factorlab and fix codex p1 findings`).
   - Push succeeded: `git push origin refactor/ssf-v2`.
-  - Previous PR #2 is already merged; a follow-up PR is required for this run's new commit.
+  - Previous PR #2 is already merged; follow-up PR created for this run:
+    - `https://github.com/easonZC/stock-factor-strategy-research-framework/pull/3`
 - Next run direction:
-  - Open follow-up PR from `refactor/ssf-v2` to `main` for this naming+bugfix patchset.
+  - Address any additional review comments on PR #3.
   - Finish any additional naming preferences (if needed) and keep all new contributions under `apps/` + `core/factorlab/`.
 
 ### Run 2026-03-01-004
