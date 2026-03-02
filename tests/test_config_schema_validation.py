@@ -1,0 +1,57 @@
+"""Tests for config schema pre-validation."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from factorlab.workflows import run_from_config, validate_run_config_schema
+
+
+def _valid_cfg() -> dict:
+    return {
+        "run": {"factor_scope": "cs", "eval_axis": "cross_section", "standardization": "cs_zscore"},
+        "data": {
+            "mode": "panel",
+            "adapter": "synthetic",
+            "fields_required": ["date", "asset", "close", "volume", "mkt_cap", "industry"],
+            "synthetic": {"n_assets": 8, "n_days": 120, "seed": 2, "start_date": "2020-01-01"},
+        },
+        "factor": {"names": ["momentum_20"], "on_missing": "raise"},
+        "research": {
+            "horizons": [1, 5],
+            "quantiles": 5,
+            "ic_rolling_window": 20,
+            "missing_policy": "drop",
+            "preprocess_steps": ["winsorize", "standardize", "neutralize"],
+            "winsorize": {"enabled": True, "method": "quantile"},
+            "neutralize": {"enabled": True, "mode": "both"},
+        },
+        "backtest": {"enabled": False},
+    }
+
+
+def test_validate_run_config_schema_unknown_root_warns() -> None:
+    cfg = _valid_cfg()
+    cfg["unknown_section"] = {"foo": 1}
+    warnings = validate_run_config_schema(cfg, strict=True)
+    assert any("unknown_section" in x for x in warnings)
+
+
+def test_validate_run_config_schema_invalid_scope_raises() -> None:
+    cfg = _valid_cfg()
+    cfg["run"]["factor_scope"] = "invalid_scope"
+    with pytest.raises(ValueError, match="run.factor_scope"):
+        validate_run_config_schema(cfg, strict=True)
+
+
+def test_run_from_config_can_skip_schema_validation(tmp_path: Path) -> None:
+    cfg = _valid_cfg()
+    cfg["research"]["preprocess_steps"] = ["winsorize", "bad_step"]
+    with pytest.raises(ValueError, match="research.preprocess_steps"):
+        run_from_config(cfg, out_dir=tmp_path / "strict_fail")
+
+    res = run_from_config(cfg, out_dir=tmp_path / "skip_ok", validate_schema=False)
+    assert res.index_html.exists()
+    assert res.summary_csv.exists()

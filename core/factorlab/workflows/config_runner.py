@@ -28,7 +28,7 @@ from factorlab.data import (
     prepare_sina_panel,
     read_panel,
 )
-from factorlab.factors import apply_factors, default_factor_registry
+from factorlab.factors import apply_factors, build_factor_registry
 from factorlab.research import FactorResearchPipeline, TSResearchConfig, TimeSeriesFactorResearchPipeline
 from factorlab.strategies import FlexibleLongShortStrategy, LongShortQuantileStrategy, Strategy, TopKLongStrategy
 from factorlab.utils import get_logger
@@ -184,7 +184,23 @@ def _normalize_factor_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     if on_missing not in {"raise", "warn_skip"}:
         LOGGER.warning("Invalid factor.on_missing='%s'. Use 'raise'.", on_missing)
         on_missing = "raise"
-    return {"names": names, "on_missing": on_missing}
+    plugin_on_error = str(fac_cfg.get("plugin_on_error", "raise")).strip().lower()
+    if plugin_on_error not in {"raise", "warn_skip"}:
+        LOGGER.warning("Invalid factor.plugin_on_error='%s'. Use 'raise'.", plugin_on_error)
+        plugin_on_error = "raise"
+
+    plugin_dirs = [str(x).strip() for x in _as_list(fac_cfg.get("plugin_dirs")) if str(x).strip()]
+    auto_discover = _to_bool(fac_cfg.get("auto_discover"), bool(plugin_dirs))
+    plugins = [x for x in _as_list(fac_cfg.get("plugins")) if x is not None and x != ""]
+
+    return {
+        "names": names,
+        "on_missing": on_missing,
+        "plugins": plugins,
+        "plugin_dirs": plugin_dirs,
+        "auto_discover": auto_discover,
+        "plugin_on_error": plugin_on_error,
+    }
 
 
 def _normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str, Any]:
@@ -353,6 +369,116 @@ def compose_run_config(
     return merged
 
 
+def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list[str]:
+    """Pre-validate run config schema and return non-blocking warnings."""
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not isinstance(cfg, dict):
+        raise ValueError("Config root must be a YAML object (dict).")
+
+    root_allowed = {"run", "data", "factor", "research", "backtest", "universe_filter"}
+    root_required = {"run", "data", "factor", "research"}
+
+    for key in sorted(set(cfg) - root_allowed):
+        warnings.append(f"{key}: unknown root section (ignored by workflow).")
+    for key in sorted(root_required):
+        if key not in cfg or not isinstance(cfg.get(key), dict):
+            errors.append(f"{key}: required object section is missing.")
+
+    run_cfg = _as_dict(cfg.get("run"))
+    scope = str(run_cfg.get("factor_scope", "")).strip().lower()
+    eval_axis = str(run_cfg.get("eval_axis", "")).strip().lower()
+    standardization = str(run_cfg.get("standardization", "")).strip().lower()
+    if scope not in {"cs", "ts"}:
+        errors.append("run.factor_scope: must be one of ['cs', 'ts'].")
+    if eval_axis not in {"cross_section", "time"}:
+        errors.append("run.eval_axis: must be one of ['cross_section', 'time'].")
+
+    cs_std = {"cs_zscore", "cs_rank", "cs_robust_zscore", "none"}
+    ts_std = {"ts_rolling_zscore", "zscore", "none"}
+    if scope == "cs" and standardization not in cs_std:
+        errors.append(f"run.standardization: for cs scope use one of {sorted(cs_std)}.")
+    if scope == "ts" and standardization not in ts_std:
+        errors.append(f"run.standardization: for ts scope use one of {sorted(ts_std)}.")
+
+    data_cfg = _as_dict(cfg.get("data"))
+    adapter = str(data_cfg.get("adapter", "")).strip().lower()
+    mode = str(data_cfg.get("mode", "")).strip().lower()
+    if adapter not in {"synthetic", "sina", "parquet", "csv"}:
+        errors.append("data.adapter: must be one of ['synthetic', 'sina', 'parquet', 'csv'].")
+    if mode not in {"single_asset", "panel"}:
+        errors.append("data.mode: must be one of ['single_asset', 'panel'].")
+    if adapter in {"parquet", "csv"} and not data_cfg.get("path"):
+        errors.append("data.path: required when data.adapter is parquet/csv.")
+    if adapter == "sina" and not data_cfg.get("data_dir"):
+        errors.append("data.data_dir: required when data.adapter is sina.")
+
+    factor_cfg = _as_dict(cfg.get("factor"))
+    factor_names = _as_list(factor_cfg.get("names"))
+    if not factor_names:
+        errors.append("factor.names: must be a non-empty list.")
+    if any(not str(x).strip() for x in factor_names):
+        errors.append("factor.names: contains empty factor name.")
+    on_missing = str(factor_cfg.get("on_missing", "raise")).strip().lower()
+    if on_missing not in {"raise", "warn_skip"}:
+        errors.append("factor.on_missing: must be one of ['raise', 'warn_skip'].")
+    plugin_on_error = str(factor_cfg.get("plugin_on_error", "raise")).strip().lower()
+    if plugin_on_error not in {"raise", "warn_skip"}:
+        errors.append("factor.plugin_on_error: must be one of ['raise', 'warn_skip'].")
+
+    research_cfg = _as_dict(cfg.get("research"))
+    horizons = _as_list(research_cfg.get("horizons"))
+    if not horizons:
+        errors.append("research.horizons: must be a non-empty list of positive ints.")
+    else:
+        for h in horizons:
+            try:
+                if int(h) <= 0:
+                    raise ValueError
+            except Exception:
+                errors.append(f"research.horizons: invalid horizon '{h}'.")
+                break
+
+    try:
+        if int(research_cfg.get("quantiles", 5)) < 2:
+            errors.append("research.quantiles: must be >= 2.")
+    except Exception:
+        errors.append("research.quantiles: must be an integer.")
+
+    try:
+        if int(research_cfg.get("ic_rolling_window", 20)) < 5:
+            errors.append("research.ic_rolling_window: must be >= 5.")
+    except Exception:
+        errors.append("research.ic_rolling_window: must be an integer.")
+
+    missing_policy = str(research_cfg.get("missing_policy", "drop")).strip().lower()
+    allowed_missing = {"drop", "fill_zero", "ffill_by_asset", "cs_median_by_date", "keep"}
+    if missing_policy not in allowed_missing:
+        errors.append(f"research.missing_policy: must be one of {sorted(allowed_missing)}.")
+
+    step_values = [str(x).strip().lower() for x in _as_list(research_cfg.get("preprocess_steps")) if str(x).strip()]
+    allowed_steps = {"winsorize", "standardize", "neutralize"}
+    for step in step_values:
+        if step not in allowed_steps:
+            errors.append(f"research.preprocess_steps: unsupported step '{step}'.")
+            break
+
+    back_cfg = _as_dict(cfg.get("backtest"))
+    strategy_cfg = _as_dict(back_cfg.get("strategy"))
+    mode_val = str(strategy_cfg.get("mode", "")).strip().lower()
+    if mode_val and mode_val not in {"sign", "topk", "longshort", "flex"}:
+        errors.append("backtest.strategy.mode: must be one of ['sign', 'topk', 'longshort', 'flex'].")
+
+    if errors and strict:
+        msg = "Run config schema validation failed:\n" + "\n".join(f"- {x}" for x in errors)
+        raise ValueError(msg)
+
+    if errors:
+        warnings.extend(f"ERROR_AS_WARNING: {x}" for x in errors)
+    return warnings
+
+
 def _load_data(data_cfg: dict[str, Any], scope_cfg: dict[str, Any]) -> tuple[pd.DataFrame, dict[str, Any]]:
     adapter = data_cfg["adapter"]
     sanitize = bool(data_cfg["sanitize"])
@@ -491,13 +617,13 @@ def _compute_factors(
     panel: pd.DataFrame,
     factor_names: list[str],
     on_missing: str,
+    registry: dict[str, Any],
 ) -> tuple[pd.DataFrame, list[str], list[str]]:
     out = panel.copy()
-    registry = default_factor_registry()
     missing = [f for f in factor_names if f not in out.columns]
     computable = [f for f in missing if f in registry]
     if computable:
-        out = apply_factors(out, computable, inplace=True)
+        out = apply_factors(out, computable, inplace=True, registry=registry)
     unresolved = [f for f in factor_names if f not in out.columns]
     if unresolved:
         if on_missing == "warn_skip":
@@ -608,9 +734,13 @@ def run_from_config(
     config: str | Path | dict[str, Any],
     out_dir: str | Path,
     repo_root: str | Path | None = None,
+    validate_schema: bool = True,
 ) -> ConfigRunResult:
     """Run TS/CS factor pipeline from yaml/dict configuration."""
     raw_cfg = load_run_config(config) if not isinstance(config, dict) else dict(config)
+    schema_warnings: list[str] = []
+    if validate_schema:
+        schema_warnings = validate_run_config_schema(raw_cfg, strict=True)
     scope_cfg = _normalize_factor_scope(raw_cfg)
     data_cfg = _normalize_data_cfg(raw_cfg, scope=scope_cfg["factor_scope"])
     fac_cfg = _normalize_factor_cfg(raw_cfg)
@@ -623,6 +753,11 @@ def run_from_config(
 
     panel, load_report = _load_data(data_cfg, scope_cfg)
     panel, mode_report = _ensure_mode_shape(panel, data_cfg=data_cfg)
+    factor_registry = build_factor_registry(
+        plugin_dirs=fac_cfg["plugin_dirs"] if fac_cfg["auto_discover"] else [],
+        plugin_specs=fac_cfg["plugins"],
+        on_plugin_error=fac_cfg["plugin_on_error"],
+    )
     requested_factors = list(fac_cfg["names"])
     candidate_factors, precheck_skipped_factors = _filter_factors_by_available_columns(
         panel=panel,
@@ -640,6 +775,7 @@ def run_from_config(
         panel,
         factor_names=candidate_factors,
         on_missing=fac_cfg["on_missing"],
+        registry=factor_registry,
     )
 
     universe_report = None
@@ -707,8 +843,16 @@ def run_from_config(
             "effective": effective_factors,
             "computed_factors": computed_factors,
             "on_missing": fac_cfg["on_missing"],
+            "plugin_config": {
+                "auto_discover": fac_cfg["auto_discover"],
+                "plugin_dirs": fac_cfg["plugin_dirs"],
+                "plugins": fac_cfg["plugins"],
+                "plugin_on_error": fac_cfg["plugin_on_error"],
+                "registry_size": len(factor_registry),
+            },
         },
         "research": research_cfg,
+        "schema_warnings": schema_warnings,
         "universe_filter": {
             "enabled": universe_cfg["enabled"],
             "report": universe_report.__dict__ if hasattr(universe_report, "__dict__") else universe_report,

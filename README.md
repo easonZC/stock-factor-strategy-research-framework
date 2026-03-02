@@ -110,9 +110,26 @@ python apps/generate_run_config.py --scope ts --adapter parquet --set data.path=
 
 ### Flexible research knobs (recommended for exploratory research)
 - `factor.on_missing`: `raise` (strict) or `warn_skip` (skip unresolved factors with warnings)
+- `factor.auto_discover` + `factor.plugin_dirs`: auto-discover custom `Factor` classes from plugin folders
+- `factor.plugins`: load plugin modules/class paths explicitly
+- `factor.plugin_on_error`: `raise` or `warn_skip` for plugin load conflicts/errors
 - `research.missing_policy`: `drop|fill_zero|ffill_by_asset|cs_median_by_date|keep`
 - `research.preprocess_steps`: ordered list from `winsorize|standardize|neutralize`
 - CLI `run_from_config` supports repeated `--config` deep-merge and repeated `--set key.path=value` overrides.
+- CLI `run_from_config` pre-validates config schema by default; use `--skip-schema-validation` to bypass.
+
+### Plugin Factor Example
+```yaml
+factor:
+  names: [simple_reversal]
+  on_missing: raise
+  auto_discover: true
+  plugin_dirs:
+    - plugins/factors
+  plugin_on_error: raise
+```
+
+Your plugin file can define a `Factor` subclass (or `get_factor_registry` / `FACTOR_REGISTRY`) and it will be discoverable.
 
 ## Typical Report Output Tree
 ```text

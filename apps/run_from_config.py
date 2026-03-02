@@ -48,6 +48,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Save merged+overridden effective config to <out>/effective_config.yaml.",
     )
+    parser.add_argument(
+        "--skip-schema-validation",
+        action="store_true",
+        help="Skip strict pre-validation of config schema before runtime.",
+    )
     return parser.parse_args()
 
 
@@ -66,6 +71,7 @@ def main() -> None:
         config=effective_cfg,
         out_dir=args.out,
         repo_root=ROOT,
+        validate_schema=not args.skip_schema_validation,
     )
     LOGGER.info(
         "Config run completed. report=%s summary=%s meta=%s",

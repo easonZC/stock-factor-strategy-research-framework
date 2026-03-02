@@ -117,6 +117,10 @@ def build_template(scope: str, adapter: str, factors: list[str]) -> dict[str, An
         "factor": {
             "names": factor_list,
             "on_missing": "raise",
+            "auto_discover": False,
+            "plugin_dirs": [],
+            "plugins": [],
+            "plugin_on_error": "raise",
         },
         "research": _base_research(scope),
         "backtest": {
@@ -180,4 +184,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

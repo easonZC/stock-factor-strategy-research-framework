@@ -53,6 +53,63 @@ For every complete run, append one new entry at the top of `Run History` with:
 
 ## Run History
 
+### Run 2026-03-01-009
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal: Implement next-step roadmap: factor plugin auto-discovery and pre-runtime config schema validation.
+- Changes:
+  - Added plugin-capable factor registry system:
+    - `core/factorlab/factors/factory.py`
+      - plugin auto-discovery from folder python files (`discover_factor_registry`)
+      - explicit plugin loading via module/class specs (`load_factor_plugins`)
+      - unified registry builder (`build_factor_registry`)
+      - `apply_factors(..., registry=...)` to support custom registries
+    - `core/factorlab/factors/__init__.py` exports new plugin APIs.
+  - Integrated plugin support into config workflow:
+    - `core/factorlab/workflows/config_runner.py`
+      - `factor` config now supports:
+        - `auto_discover`
+        - `plugin_dirs`
+        - `plugins`
+        - `plugin_on_error`
+      - runtime uses `build_factor_registry(...)` before factor computation.
+      - run metadata now records plugin config + registry size.
+  - Added schema pre-validation before runtime:
+    - `validate_run_config_schema(...)` in `core/factorlab/workflows/config_runner.py`
+    - validates required sections, key enum values, required adapter fields, and major numeric constraints.
+    - friendly aggregated error output before heavy pipeline execution.
+    - `run_from_config(..., validate_schema=True)` uses strict validation by default.
+  - Added CLI control:
+    - `apps/run_from_config.py` new flag: `--skip-schema-validation`.
+  - Exported schema validator:
+    - `core/factorlab/workflows/__init__.py`
+  - Updated config scaffold defaults to include plugin keys:
+    - `apps/generate_run_config.py`
+  - README updates:
+    - plugin factor config example
+    - schema validation behavior and bypass flag
+  - New tests:
+    - `tests/test_factor_plugins.py` (plugin discovery + config-run integration)
+    - `tests/test_config_schema_validation.py` (schema validator + skip behavior)
+- Validation commands:
+  - `python3 -m ruff check core apps tests`
+  - `python3 -m pytest -q`
+  - `python3 apps/run_from_config.py --config /tmp/plugin_cfg.yaml --out outputs/research/factor/plugin_discovery_check`
+  - `python3 apps/run_from_config.py --config /tmp/plugin_cfg.yaml --set run.factor_scope=bad --out outputs/research/factor/invalid_schema_check`
+  - `python3 apps/run_from_config.py --config /tmp/plugin_cfg.yaml --set research.preprocess_steps='[winsorize,bad_step]' --out outputs/research/factor/schema_skip_check --skip-schema-validation`
+- Validation summary:
+  - Lint passed.
+  - Tests passed: `22 passed`.
+  - Plugin factor auto-discovery run succeeded.
+  - Invalid schema is rejected early with clear validation message.
+  - Skip-schema mode works for exploratory runs with non-critical config issues.
+- Git actions:
+  - Working branch created: `feat/plugin-schema-validation-20260301`.
+  - Local commit: pending
+  - Push: pending
+- Next run direction:
+  - Add custom factor expression composer (e.g. `f_expr = momentum_20 - volatility_20`) with safe parser.
+  - Add plugin strategy registry symmetry with factor plugins.
+
 ### Run 2026-03-01-008
 - Time: 2026-03-01 (America/Los_Angeles)
 - Goal: Improve usability with config scaffolding, CLI help quality, and config merge/override support.

@@ -7,6 +7,7 @@ from .config_runner import (
     deep_merge_dict,
     load_run_config,
     run_from_config,
+    validate_run_config_schema,
 )
 from .model_factor_benchmark import (
     ModelFactorBenchmarkConfig,
@@ -26,4 +27,5 @@ __all__ = [
     "load_run_config",
     "run_from_config",
     "run_model_factor_benchmark",
+    "validate_run_config_schema",
 ]
