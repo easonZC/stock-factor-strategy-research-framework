@@ -11,6 +11,7 @@ FactorLab v2 separates orchestration from reusable research logic:
 - `factorlab.data.prepare_sina_panel(...)` for Sina folder
 - `factorlab.data.generate_synthetic_panel(...)` for demos/tests
 - optional adapter config hook: `validate_<adapter>_config(...)`
+- OOP orchestration: `DataAdapterWorkflow` 统一管理注册、校验、加载、审计。
 
 2. Compute factors:
 - `factorlab.factors.apply_factors(...)`
@@ -25,6 +26,7 @@ FactorLab v2 separates orchestration from reusable research logic:
 4. Research and reporting:
 - CS pipeline: `factorlab.research.FactorResearchPipeline`
 - TS pipeline: `factorlab.research.TimeSeriesFactorResearchPipeline`
+- OOP renderer: `factorlab.research.report.ReportRenderer`
 - Outputs:
   - `index.html`
   - `assets/factors/<factor>/<variant>/*.png`
@@ -36,6 +38,10 @@ FactorLab v2 separates orchestration from reusable research logic:
 5. Optional backtest:
 - Strategy weights from `factorlab.strategies.*`
 - Performance from `factorlab.backtest.run_backtest(...)`
+
+6. Output retention (ops):
+- `factorlab.ops.OutputRetentionManager` 支持按“时间阈值 + 最新保留数”清理历史输出目录。
+- CLI: `apps/cleanup_outputs.py`
 
 ## Config-driven one-click mode
 `factorlab.workflows.run_from_config(...)` enforces explicit setup:

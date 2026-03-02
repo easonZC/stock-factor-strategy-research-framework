@@ -23,6 +23,9 @@ def _base_run(scope: str) -> dict[str, Any]:
         "factor_scope": scope,
         "eval_axis": "cross_section" if is_cs else "time",
         "standardization": "cs_zscore" if is_cs else "ts_rolling_zscore",
+        "config_mode": "strict",
+        "fail_on_autocorrect": False,
+        "leakage_guard_mode": "strict",
     }
 
 

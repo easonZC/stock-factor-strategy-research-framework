@@ -1,7 +1,9 @@
 # Data and generated artifacts (hard constraint)
 /data/
+/stock_data/
 /outputs/
 /artifacts/
+PROGRESS.md
 .env
 *.parquet
 *.csv

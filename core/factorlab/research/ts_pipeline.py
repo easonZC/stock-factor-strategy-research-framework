@@ -22,12 +22,28 @@ from factorlab.research.diagnostics import coverage_by_date, outlier_monitor
 from factorlab.research.forward_returns import add_forward_returns
 from factorlab.research.report import render_report
 from factorlab.research.statistics import newey_west_tstat, summarize_ic
-from factorlab.utils import get_logger
+from factorlab.utils import get_logger, safe_slug
 
 LOGGER = get_logger("factorlab.research.ts")
 
 
 TSStandardizeMode = Literal["ts_rolling_zscore", "zscore", "none"]
+
+
+def _build_factor_slug_map(factors: list[str]) -> dict[str, str]:
+    """为 TS 输出目录生成稳定且不冲突的因子 slug。"""
+    used: set[str] = set()
+    mapping: dict[str, str] = {}
+    for fac in factors:
+        base = safe_slug(fac, default="factor")
+        candidate = base
+        seq = 2
+        while candidate in used:
+            candidate = f"{base}_{seq}"
+            seq += 1
+        used.add(candidate)
+        mapping[fac] = candidate
+    return mapping
 
 
 @dataclass(slots=True)
@@ -183,6 +199,7 @@ class TimeSeriesFactorResearchPipeline:
 
         panel = panel.sort_values(["asset", "date"]).reset_index(drop=True)
         panel = add_forward_returns(panel, horizons=self.config.horizons)
+        factor_slug_map = _build_factor_slug_map(factors)
 
         summary_rows: list[dict[str, float | str | int]] = []
         figure_map: dict[str, list[Path]] = {}
@@ -195,8 +212,9 @@ class TimeSeriesFactorResearchPipeline:
             fac_std = _standardize_ts_factor(panel, factor_col=fac, cfg=self.config)
             panel[f"{fac}_ts"] = fac_std
             outlier_rows.append(outlier_monitor(fac_raw, fac_std, fac))
-            fac_asset_dir = assets_dir / "factors" / fac / "ts"
-            fac_table_dir = tables_dir / "factors" / fac / "ts"
+            fac_slug = factor_slug_map[fac]
+            fac_asset_dir = assets_dir / "factors" / fac_slug / "ts"
+            fac_table_dir = tables_dir / "factors" / fac_slug / "ts"
             fac_asset_dir.mkdir(parents=True, exist_ok=True)
             fac_table_dir.mkdir(parents=True, exist_ok=True)
 

@@ -343,3 +343,35 @@ def test_run_from_config_stooq_adapter_smoke(tmp_path, monkeypatch) -> None:
     result = run_from_config(config=cfg_path, out_dir=out_dir)
     assert result.index_html.exists()
     assert result.summary_csv.exists()
+
+
+def test_run_from_config_sanitizes_factor_output_paths(tmp_path) -> None:
+    malicious = "../../../../evil_factor"
+    cfg = {
+        "run": {"factor_scope": "cs", "eval_axis": "cross_section", "standardization": "cs_zscore"},
+        "data": {
+            "mode": "panel",
+            "adapter": "synthetic",
+            "fields_required": ["date", "asset", "close", "volume", "mkt_cap", "industry"],
+            "synthetic": {"n_assets": 10, "n_days": 140, "seed": 77, "start_date": "2020-01-01"},
+        },
+        "factor": {
+            "names": [malicious],
+            "expressions": {malicious: "momentum_20 - volatility_20"},
+            "expression_on_error": "raise",
+            "on_missing": "raise",
+        },
+        "research": {
+            "horizons": [1, 5],
+            "quantiles": 5,
+            "ic_rolling_window": 20,
+            "winsorize": {"enabled": True, "method": "quantile"},
+            "neutralize": {"enabled": True, "mode": "both"},
+        },
+        "backtest": {"enabled": False},
+    }
+    out_dir = tmp_path / "out_path_safe"
+    result = run_from_config(config=cfg, out_dir=out_dir)
+    assert result.index_html.exists()
+    # 若目录拼接存在路径穿越，会在 out_dir 外生成目录；这里确保不会发生。
+    assert not (tmp_path / "evil_factor").exists()

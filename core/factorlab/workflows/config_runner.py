@@ -49,7 +49,7 @@ from factorlab.strategies import (
     TopKLongStrategy,
     build_strategy_registry,
 )
-from factorlab.utils import get_logger, summarize_captured_warnings, timed_stage
+from factorlab.utils import get_logger, safe_slug, summarize_captured_warnings, timed_stage
 from factorlab.workflows.runtime import collect_runtime_manifest
 
 LOGGER = get_logger("factorlab.workflows.config_runner")
@@ -57,6 +57,11 @@ LOGGER = get_logger("factorlab.workflows.config_runner")
 
 FactorScope = Literal["ts", "cs"]
 EvalAxis = Literal["time", "cross_section"]
+ConfigGovernanceMode = Literal["strict", "warn", "compat"]
+LeakageGuardMode = Literal["strict", "warn", "off"]
+
+FORBIDDEN_LEAKAGE_PREFIXES = ("fwd_ret_", "label_", "target_", "future_")
+FORBIDDEN_LEAKAGE_EXACT = {"label", "target", "y", "future_return"}
 
 FACTOR_REQUIRED_COLUMNS: dict[str, set[str]] = {
     "momentum_20": {"close"},
@@ -76,6 +81,133 @@ class ConfigRunResult:
     run_meta_json: Path
     run_manifest_json: Path
     backtest_summary_csv: Path | None
+
+
+@dataclass(slots=True)
+class DataAdapterWorkflowResult:
+    """数据适配器阶段输出。"""
+
+    panel: pd.DataFrame
+    load_report: dict[str, Any]
+    mode_report: dict[str, Any]
+    adapter_validation_report: dict[str, Any]
+    adapter_audit_tables: dict[str, str]
+    adapter_registry: dict[str, Any]
+    adapter_validator_registry: dict[str, Any]
+    adapter_cfg: AdapterConfig | None
+
+
+class DataAdapterWorkflow:
+    """数据适配器生命周期管理器（注册、校验、加载、审计）。"""
+
+    def __init__(
+        self,
+        data_cfg: dict[str, Any],
+        scope_cfg: dict[str, Any],
+        out_dir: Path,
+        timings: dict[str, float],
+    ):
+        self.data_cfg = data_cfg
+        self.scope_cfg = scope_cfg
+        self.out_dir = out_dir
+        self.timings = timings
+        self.logger_name = "factorlab.workflows.config_runner"
+
+    def _build_adapter_registry(self) -> dict[str, Any]:
+        with timed_stage("build_data_adapter_registry", timings=self.timings, logger_name=self.logger_name):
+            return build_data_adapter_registry(
+                plugin_dirs=self.data_cfg["adapter_plugin_dirs"] if self.data_cfg["adapter_auto_discover"] else [],
+                plugin_specs=self.data_cfg["adapter_plugins"],
+                on_plugin_error=self.data_cfg["adapter_plugin_on_error"],
+                include_defaults=True,
+            )
+
+    def _build_adapter_validator_registry(self) -> dict[str, Any]:
+        with timed_stage(
+            "build_data_adapter_validator_registry",
+            timings=self.timings,
+            logger_name=self.logger_name,
+        ):
+            return build_data_adapter_validator_registry(
+                plugin_dirs=self.data_cfg["adapter_plugin_dirs"] if self.data_cfg["adapter_auto_discover"] else [],
+                plugin_specs=self.data_cfg["adapter_plugins"],
+                on_plugin_error=self.data_cfg["adapter_plugin_on_error"],
+                include_defaults=True,
+            )
+
+    def _validate_adapter(
+        self,
+        adapter_registry: dict[str, Any],
+        validator_registry: dict[str, Any],
+    ) -> tuple[AdapterConfig | None, dict[str, Any]]:
+        adapter_cfg: AdapterConfig | None = None
+        report: dict[str, Any] = {
+            "adapter": self.data_cfg["adapter"],
+            "validated": False,
+            "validator_found": False,
+            "validation_seconds": 0.0,
+            "warnings": [],
+        }
+        with timed_stage(
+            "validate_data_adapter_config",
+            timings=self.timings,
+            logger_name=self.logger_name,
+        ):
+            if self.data_cfg["adapter"] in adapter_registry:
+                adapter_cfg = _build_adapter_config(self.data_cfg)
+                report = _validate_adapter_config(
+                    adapter=self.data_cfg["adapter"],
+                    adapter_cfg=adapter_cfg,
+                    validator_registry=validator_registry,
+                )
+        return adapter_cfg, report
+
+    def _load_and_shape(
+        self,
+        adapter_registry: dict[str, Any],
+        adapter_cfg: AdapterConfig | None,
+    ) -> tuple[pd.DataFrame, dict[str, Any], dict[str, Any]]:
+        with timed_stage("load_data", timings=self.timings, logger_name=self.logger_name):
+            panel, load_report = _load_data(
+                self.data_cfg,
+                self.scope_cfg,
+                adapter_registry=adapter_registry,
+                adapter_cfg=adapter_cfg,
+            )
+            panel, mode_report = _ensure_mode_shape(panel, data_cfg=self.data_cfg)
+        return panel, load_report, mode_report
+
+    def _audit_quality(self, panel: pd.DataFrame, load_report: dict[str, Any]) -> dict[str, str]:
+        with timed_stage("adapter_quality_audit", timings=self.timings, logger_name=self.logger_name):
+            return _write_adapter_quality_audit_tables(
+                panel=panel,
+                data_cfg=self.data_cfg,
+                load_report=load_report,
+                out_dir=self.out_dir,
+            )
+
+    def run(self) -> DataAdapterWorkflowResult:
+        adapter_registry = self._build_adapter_registry()
+        validator_registry = self._build_adapter_validator_registry()
+        adapter_cfg, adapter_validation_report = self._validate_adapter(
+            adapter_registry=adapter_registry,
+            validator_registry=validator_registry,
+        )
+        panel, load_report, mode_report = self._load_and_shape(
+            adapter_registry=adapter_registry,
+            adapter_cfg=adapter_cfg,
+        )
+        adapter_audit_tables = self._audit_quality(panel=panel, load_report=load_report)
+        return DataAdapterWorkflowResult(
+            panel=panel,
+            load_report=load_report,
+            mode_report=mode_report,
+            adapter_validation_report=adapter_validation_report,
+            adapter_audit_tables=adapter_audit_tables,
+            adapter_registry=adapter_registry,
+            adapter_validator_registry=validator_registry,
+            adapter_cfg=adapter_cfg,
+        )
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -130,6 +262,257 @@ def _to_optional_float(value: Any) -> float | None:
     if not np.isfinite(out):
         return None
     return out
+
+
+def _get_nested_value(obj: dict[str, Any], path: tuple[str, ...]) -> Any:
+    cur: Any = obj
+    for key in path:
+        if not isinstance(cur, dict) or key not in cur:
+            return None
+        cur = cur[key]
+    return cur
+
+
+def _is_key_present(obj: dict[str, Any], path: tuple[str, ...]) -> bool:
+    cur: Any = obj
+    for key in path:
+        if not isinstance(cur, dict) or key not in cur:
+            return False
+        cur = cur[key]
+    return True
+
+
+def _normalize_run_governance_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
+    run_cfg = _as_dict(cfg.get("run"))
+    config_mode = str(run_cfg.get("config_mode", "compat")).strip().lower()
+    if config_mode not in {"strict", "warn", "compat"}:
+        raise ValueError("run.config_mode must be one of ['strict', 'warn', 'compat'].")
+
+    leakage_guard_mode = str(run_cfg.get("leakage_guard_mode", "strict")).strip().lower()
+    if leakage_guard_mode not in {"strict", "warn", "off"}:
+        raise ValueError("run.leakage_guard_mode must be one of ['strict', 'warn', 'off'].")
+
+    fail_on_autocorrect = _to_bool(run_cfg.get("fail_on_autocorrect"), False)
+    return {
+        "config_mode": config_mode,
+        "leakage_guard_mode": leakage_guard_mode,
+        "fail_on_autocorrect": fail_on_autocorrect,
+    }
+
+
+def _collect_autocorrection(
+    corrections: list[dict[str, Any]],
+    cfg: dict[str, Any],
+    path: tuple[str, ...],
+    normalized_value: Any,
+    reason: str,
+) -> None:
+    if not _is_key_present(cfg, path):
+        return
+    original = _get_nested_value(cfg, path)
+    if original == normalized_value:
+        return
+    corrections.append(
+        {
+            "field": ".".join(path),
+            "original": original,
+            "normalized": normalized_value,
+            "reason": reason,
+        }
+    )
+
+
+def _collect_normalization_autocorrections(
+    cfg: dict[str, Any],
+    scope_cfg: dict[str, Any],
+    data_cfg: dict[str, Any],
+    fac_cfg: dict[str, Any],
+    research_cfg: dict[str, Any],
+    back_cfg: dict[str, Any],
+) -> list[dict[str, Any]]:
+    corrections: list[dict[str, Any]] = []
+
+    _collect_autocorrection(corrections, cfg, ("run", "factor_scope"), scope_cfg["factor_scope"], "invalid_or_unsupported_value")
+    _collect_autocorrection(corrections, cfg, ("run", "eval_axis"), scope_cfg["eval_axis"], "invalid_or_incompatible_scope")
+    _collect_autocorrection(
+        corrections,
+        cfg,
+        ("run", "standardization"),
+        scope_cfg["standardization"],
+        "invalid_for_scope_or_unsupported_value",
+    )
+
+    _collect_autocorrection(corrections, cfg, ("data", "adapter"), data_cfg["adapter"], "unknown_without_plugins")
+    _collect_autocorrection(corrections, cfg, ("data", "mode"), data_cfg["mode"], "invalid_or_incompatible_scope")
+    _collect_autocorrection(
+        corrections,
+        cfg,
+        ("data", "adapter_plugin_on_error"),
+        data_cfg["adapter_plugin_on_error"],
+        "invalid_enum_fallback",
+    )
+    _collect_autocorrection(corrections, cfg, ("data", "request_timeout_sec"), data_cfg["request_timeout_sec"], "bounded_min_value")
+    _collect_autocorrection(corrections, cfg, ("data", "min_rows_per_asset"), data_cfg["min_rows_per_asset"], "bounded_min_value")
+
+    _collect_autocorrection(corrections, cfg, ("factor", "on_missing"), fac_cfg["on_missing"], "invalid_enum_fallback")
+    _collect_autocorrection(corrections, cfg, ("factor", "plugin_on_error"), fac_cfg["plugin_on_error"], "invalid_enum_fallback")
+    _collect_autocorrection(
+        corrections,
+        cfg,
+        ("factor", "expression_on_error"),
+        fac_cfg["expression_on_error"],
+        "invalid_enum_fallback",
+    )
+    _collect_autocorrection(
+        corrections,
+        cfg,
+        ("factor", "combination_on_error"),
+        fac_cfg["combination_on_error"],
+        "invalid_enum_fallback",
+    )
+
+    _collect_autocorrection(corrections, cfg, ("research", "missing_policy"), research_cfg["missing_policy"], "invalid_enum_fallback")
+    _collect_autocorrection(
+        corrections,
+        cfg,
+        ("research", "transform_plugin_on_error"),
+        research_cfg["transform_plugin_on_error"],
+        "invalid_enum_fallback",
+    )
+    _collect_autocorrection(corrections, cfg, ("research", "quantiles"), research_cfg["quantiles"], "bounded_min_value")
+    _collect_autocorrection(
+        corrections,
+        cfg,
+        ("research", "ic_rolling_window"),
+        research_cfg["ic_rolling_window"],
+        "bounded_min_value",
+    )
+    _collect_autocorrection(
+        corrections,
+        cfg,
+        ("research", "ts_standardize_window"),
+        research_cfg["ts_standardize_window"],
+        "bounded_min_value",
+    )
+    _collect_autocorrection(
+        corrections,
+        cfg,
+        ("research", "ts_quantile_lookback"),
+        research_cfg["ts_quantile_lookback"],
+        "bounded_min_value",
+    )
+    if _is_key_present(cfg, ("research", "preprocess_steps")):
+        _collect_autocorrection(
+            corrections,
+            cfg,
+            ("research", "preprocess_steps"),
+            research_cfg["preprocess_steps"],
+            "unsupported_steps_removed_or_defaulted",
+        )
+
+    _collect_autocorrection(
+        corrections,
+        cfg,
+        ("backtest", "strategy", "plugin_on_error"),
+        back_cfg["strategy_plugin_on_error"],
+        "invalid_enum_fallback",
+    )
+    _collect_autocorrection(
+        corrections,
+        cfg,
+        ("backtest", "strategy", "rebalance_every"),
+        back_cfg["rebalance_every"],
+        "bounded_min_value",
+    )
+    _collect_autocorrection(
+        corrections,
+        cfg,
+        ("backtest", "execution_delay_days"),
+        back_cfg["execution_delay_days"],
+        "bounded_min_value",
+    )
+    return corrections
+
+
+def _handle_autocorrection_governance(
+    corrections: list[dict[str, Any]],
+    governance_cfg: dict[str, Any],
+) -> None:
+    if not corrections:
+        return
+
+    mode = str(governance_cfg["config_mode"]).lower()
+    fail_on_autocorrect = bool(governance_cfg["fail_on_autocorrect"])
+    if mode == "strict" or fail_on_autocorrect:
+        sample = corrections[:8]
+        detail = "\n".join(
+            f"- {row['field']}: {row['original']!r} -> {row['normalized']!r} ({row['reason']})"
+            for row in sample
+        )
+        extra = "" if len(corrections) <= len(sample) else f"\n- ... and {len(corrections) - len(sample)} more"
+        raise ValueError(f"Config auto-correction detected under strict governance:\n{detail}{extra}")
+
+    if mode == "warn":
+        for row in corrections:
+            LOGGER.warning(
+                "Config auto-correct applied [%s]: %r -> %r (%s)",
+                row["field"],
+                row["original"],
+                row["normalized"],
+                row["reason"],
+            )
+        return
+
+    LOGGER.info("Config auto-correct count=%s (compat mode).", len(corrections))
+
+
+def _is_forbidden_leakage_name(name: str) -> bool:
+    key = str(name).strip().lower()
+    if key in FORBIDDEN_LEAKAGE_EXACT:
+        return True
+    return key.startswith(FORBIDDEN_LEAKAGE_PREFIXES)
+
+
+def _run_leakage_guard(
+    governance_cfg: dict[str, Any],
+    panel: pd.DataFrame,
+    requested_factors: list[str],
+    expression_dependencies: set[str],
+    combination_dependencies: set[str],
+) -> dict[str, Any]:
+    mode = str(governance_cfg["leakage_guard_mode"]).lower()
+    referenced = sorted(
+        {
+            str(x).strip()
+            for x in [*requested_factors, *sorted(expression_dependencies), *sorted(combination_dependencies)]
+            if str(x).strip()
+        }
+    )
+    forbidden_referenced = sorted([x for x in referenced if _is_forbidden_leakage_name(x)])
+    forbidden_panel_columns = sorted([str(c) for c in panel.columns if _is_forbidden_leakage_name(str(c))])
+
+    issues: list[str] = []
+    if forbidden_referenced:
+        issues.append(f"forbidden referenced labels/future columns: {forbidden_referenced}")
+    if forbidden_panel_columns and forbidden_referenced:
+        issues.append(f"panel also contains forbidden columns: {forbidden_panel_columns}")
+
+    report = {
+        "mode": mode,
+        "issues": issues,
+        "forbidden_referenced": forbidden_referenced,
+        "forbidden_panel_columns": forbidden_panel_columns,
+        "blocked": False,
+    }
+    if not issues or mode == "off":
+        return report
+    if mode == "warn":
+        for msg in issues:
+            LOGGER.warning("Leakage guard warning: %s", msg)
+        return report
+
+    report["blocked"] = True
+    raise ValueError("Leakage guard blocked run:\n- " + "\n- ".join(issues))
 
 
 def _normalize_factor_scope(cfg: dict[str, Any]) -> dict[str, Any]:
@@ -662,6 +1045,14 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
         errors.append("run.factor_scope: must be one of ['cs', 'ts'].")
     if eval_axis not in {"cross_section", "time"}:
         errors.append("run.eval_axis: must be one of ['cross_section', 'time'].")
+    config_mode = str(run_cfg.get("config_mode", "compat")).strip().lower()
+    if config_mode not in {"strict", "warn", "compat"}:
+        errors.append("run.config_mode: must be one of ['strict', 'warn', 'compat'].")
+    leakage_guard_mode = str(run_cfg.get("leakage_guard_mode", "strict")).strip().lower()
+    if leakage_guard_mode not in {"strict", "warn", "off"}:
+        errors.append("run.leakage_guard_mode: must be one of ['strict', 'warn', 'off'].")
+    if "fail_on_autocorrect" in run_cfg and not isinstance(run_cfg.get("fail_on_autocorrect"), bool):
+        errors.append("run.fail_on_autocorrect: must be boolean when provided.")
 
     cs_std = {"cs_zscore", "cs_rank", "cs_robust_zscore", "none"}
     ts_std = {"ts_rolling_zscore", "zscore", "none"}
@@ -1474,7 +1865,7 @@ def _run_optional_backtest(
             weights = strategy.generate_weights(score_df)
 
         res = run_backtest(panel=panel, weights=weights, config=bt_cfg)
-        fac_dir = bt_dir / fac
+        fac_dir = bt_dir / safe_slug(fac, default="factor")
         fac_dir.mkdir(parents=True, exist_ok=True)
         weights.to_csv(fac_dir / "weights.csv", index=False)
         res.daily.to_csv(fac_dir / "daily.csv", index=False)
@@ -1499,6 +1890,7 @@ def run_from_config(
 ) -> ConfigRunResult:
     """按 YAML/字典配置执行 TS/CS 因子研究流程。"""
     raw_cfg = load_run_config(config) if not isinstance(config, dict) else dict(config)
+    governance_cfg = _normalize_run_governance_cfg(raw_cfg)
     schema_warnings: list[str] = []
     if validate_schema:
         schema_warnings = validate_run_config_schema(raw_cfg, strict=True)
@@ -1508,68 +1900,34 @@ def run_from_config(
     research_cfg = _normalize_research_cfg(raw_cfg, scope=scope_cfg["factor_scope"])
     back_cfg = _normalize_backtest_cfg(raw_cfg, scope=scope_cfg["factor_scope"])
     universe_cfg = _normalize_universe_cfg(raw_cfg)
+    autocorrections = _collect_normalization_autocorrections(
+        cfg=raw_cfg,
+        scope_cfg=scope_cfg,
+        data_cfg=data_cfg,
+        fac_cfg=fac_cfg,
+        research_cfg=research_cfg,
+        back_cfg=back_cfg,
+    )
+    _handle_autocorrection_governance(autocorrections, governance_cfg=governance_cfg)
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     timings: dict[str, float] = {}
     captured_warnings: list[Any] = []
 
-    with timed_stage("build_data_adapter_registry", timings=timings, logger_name="factorlab.workflows.config_runner"):
-        data_adapter_registry = build_data_adapter_registry(
-            plugin_dirs=data_cfg["adapter_plugin_dirs"] if data_cfg["adapter_auto_discover"] else [],
-            plugin_specs=data_cfg["adapter_plugins"],
-            on_plugin_error=data_cfg["adapter_plugin_on_error"],
-            include_defaults=True,
-        )
-    with timed_stage(
-        "build_data_adapter_validator_registry",
+    adapter_stage = DataAdapterWorkflow(
+        data_cfg=data_cfg,
+        scope_cfg=scope_cfg,
+        out_dir=out,
         timings=timings,
-        logger_name="factorlab.workflows.config_runner",
-    ):
-        data_adapter_validator_registry = build_data_adapter_validator_registry(
-            plugin_dirs=data_cfg["adapter_plugin_dirs"] if data_cfg["adapter_auto_discover"] else [],
-            plugin_specs=data_cfg["adapter_plugins"],
-            on_plugin_error=data_cfg["adapter_plugin_on_error"],
-            include_defaults=True,
-        )
-
-    adapter_cfg = None
-    adapter_validation_report: dict[str, Any] = {
-        "adapter": data_cfg["adapter"],
-        "validated": False,
-        "validator_found": False,
-        "validation_seconds": 0.0,
-        "warnings": [],
-    }
-    with timed_stage(
-        "validate_data_adapter_config",
-        timings=timings,
-        logger_name="factorlab.workflows.config_runner",
-    ):
-        if data_cfg["adapter"] in data_adapter_registry:
-            adapter_cfg = _build_adapter_config(data_cfg)
-            adapter_validation_report = _validate_adapter_config(
-                adapter=data_cfg["adapter"],
-                adapter_cfg=adapter_cfg,
-                validator_registry=data_adapter_validator_registry,
-            )
-
-    with timed_stage("load_data", timings=timings, logger_name="factorlab.workflows.config_runner"):
-        panel, load_report = _load_data(
-            data_cfg,
-            scope_cfg,
-            adapter_registry=data_adapter_registry,
-            adapter_cfg=adapter_cfg,
-        )
-        panel, mode_report = _ensure_mode_shape(panel, data_cfg=data_cfg)
-
-    with timed_stage("adapter_quality_audit", timings=timings, logger_name="factorlab.workflows.config_runner"):
-        adapter_audit_tables = _write_adapter_quality_audit_tables(
-            panel=panel,
-            data_cfg=data_cfg,
-            load_report=load_report,
-            out_dir=out,
-        )
+    ).run()
+    panel = adapter_stage.panel
+    load_report = adapter_stage.load_report
+    mode_report = adapter_stage.mode_report
+    adapter_validation_report = adapter_stage.adapter_validation_report
+    adapter_audit_tables = adapter_stage.adapter_audit_tables
+    data_adapter_registry = adapter_stage.adapter_registry
+    data_adapter_validator_registry = adapter_stage.adapter_validator_registry
 
     with timed_stage("build_factor_registry", timings=timings, logger_name="factorlab.workflows.config_runner"):
         factor_registry = build_factor_registry(
@@ -1609,6 +1967,13 @@ def run_from_config(
         (set(requested_factors) - expression_outputs - combination_outputs)
         | expression_dependencies
         | combination_dependencies
+    )
+    leakage_guard_report = _run_leakage_guard(
+        governance_cfg=governance_cfg,
+        panel=panel,
+        requested_factors=requested_factors,
+        expression_dependencies=expression_dependencies,
+        combination_dependencies=combination_dependencies,
     )
 
     with timed_stage("factor_compute", timings=timings, logger_name="factorlab.workflows.config_runner"):
@@ -1794,6 +2159,13 @@ def run_from_config(
                 "registry_transforms": sorted(transform_registry.keys()),
             },
         },
+        "config_governance": {
+            **governance_cfg,
+            "autocorrection_count": len(autocorrections),
+            "autocorrections": autocorrections,
+            "schema_validation_enabled": bool(validate_schema),
+        },
+        "leakage_guard": leakage_guard_report,
         "schema_warnings": schema_warnings,
         "universe_filter": {
             "enabled": universe_cfg["enabled"],
