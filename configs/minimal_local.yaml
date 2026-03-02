@@ -1,0 +1,27 @@
+# 本地数据最小配置（尽量少字段即可运行）
+# 使用方式：
+# 1) 把 parquet/csv 文件放到 data/raw/（单文件或多文件都可）
+# 2) 运行：
+#    python apps/run_from_config.py --config configs/minimal_local.yaml --out outputs/research/factor/local
+
+data:
+  # 支持文件路径或目录路径；目录会自动合并 *.parquet,*.csv
+  path: data/raw
+
+factor:
+  # 不填会默认 momentum_20；建议显式写清楚
+  names: [momentum_20, volatility_20]
+
+run:
+  # 可选；默认就是 cs + cross_section + cs_zscore
+  factor_scope: cs
+  eval_axis: cross_section
+  standardization: cs_zscore
+  research_profile: dev
+
+# 可选，空对象代表使用 profile 默认值
+research: {}
+
+backtest:
+  # 本地快速研究先关回测，必要时再打开
+  enabled: false

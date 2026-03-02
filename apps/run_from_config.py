@@ -29,6 +29,7 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "Examples:\n"
             "  python apps/run_from_config.py --config configs/cs_factor.yaml --out outputs/research/factor/cs\n"
+            "  python apps/run_from_config.py --config configs/minimal_local.yaml --out outputs/research/factor/local\n"
             "  python apps/run_from_config.py --config configs/base.yaml --config configs/cs_factor.yaml --set run.research_profile=dev --out outputs/research/factor/cs_dev\n"
             "  python apps/run_from_config.py --config configs/cs_factor.yaml --set run.std=cs_rank --set research.q=10 --out outputs/research/factor/cs_alias\n"
             "  python apps/run_from_config.py --config configs/cs_factor.yaml --set research.horizons+=20 --set research.horizons-=1 --out outputs/research/factor/cs_horizon_ops\n"

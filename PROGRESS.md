@@ -25,3 +25,14 @@
 - 性能：继续优化大面板场景下的回测与研究阶段内存占用（减少不必要复制）。
 - 研究灵活性：补充更多可配置评估项（分层统计阈值、可选输出粒度）。
 - 可维护性：继续收敛接口文档，保持“配置驱动 + OOP 业务实现”的一致性。
+
+## Run History
+- 2026-03-02（feat/simple-config-raw-data-20260302）  
+  - 已完成：配置简化增强，支持最简配置运行（缺失 `run/research/backtest` 时使用默认值）。  
+  - 已完成：新增本地目录数据加载器，`data.path` 指向目录时自动合并 `*.parquet,*.csv`。  
+  - 已完成：新增最简本地配置模板 `configs/minimal_local.yaml`，默认读取 `data/raw`。  
+  - 已完成：`run_from_config`/README 增加最简示例与本地数据说明；补充 `adapter/synthetic` 概念说明。  
+  - 已完成：新增测试覆盖目录读取与最简配置链路。  
+  - 校验：`python3 -m ruff check .`、`python3 -m pytest -q`（93 passed）。  
+  - 运行验证：`python3 apps/run_from_config.py --config configs/minimal_local.yaml --out outputs/research/factor/local_minimal_run_v2` 成功生成报告。  
+  - 下一步：继续把配置向“研究笔记式”收敛（可选单因子快速模式、默认禁用非必要统计输出）。

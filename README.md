@@ -56,6 +56,15 @@ python3 -m pip install -r requirements.txt
 
 If your environment exposes `python` directly, you can use `python` instead of `python3` in all commands below.
 
+## Data Input Concepts
+- `adapter`: data ingestion mode
+  - `synthetic`: framework-generated mock market panel for quick E2E validation
+  - `parquet/csv`: read a single local panel file
+  - `raw_dir`: read and merge multiple local files under one directory
+  - `sina/stooq`: adapter-based external/public source loaders
+- `synthetic` block: parameters for generated data (`n_assets`, `n_days`, `seed`, ...)
+  - useful for CI/smoke tests and code validation without proprietary data
+
 ## Required Commands
 
 ### A) Synthetic report (must run end-to-end)
@@ -90,6 +99,13 @@ python apps/run_factor_research.py --panel data/panel.parquet --out outputs/rese
 ```bash
 python apps/run_from_config.py --config configs/cs_factor.yaml --out outputs/research/factor/config_cs
 ```
+
+### Minimal local-data run (recommended to start)
+```bash
+python apps/run_from_config.py --config configs/minimal_local.yaml --out outputs/research/factor/local
+```
+`configs/minimal_local.yaml` accepts `data.source` as either a single file (`.parquet/.csv`) or a directory (`data/raw`).
+When a directory is provided, the runner auto-loads and merges `*.parquet,*.csv`.
 
 ### TS example
 ```bash
@@ -198,7 +214,11 @@ python apps/lint_config.py --config configs/cs_factor.yaml --strict
 - `backtest.strategy.mode`: built-in `sign|topk|longshort|flex|meanvar` or plugin-defined mode
 - `backtest` risk controls: `max_turnover|max_abs_weight|max_gross_exposure|max_net_exposure`
 - `backtest.benchmark_mode`: `none|cross_sectional_mean|panel_column`
-- `data.adapter`: supports `synthetic|parquet|csv|sina|stooq`
+- `data.adapter`: supports `synthetic|parquet|csv|raw_dir|sina|stooq` (`raw` alias is also accepted)
+- `data.source` / `data.path`: local file or directory path. Adapter can be omitted and inferred from path.
+  - file `.parquet` -> `parquet`
+  - file `.csv` -> `csv`
+  - directory -> `raw_dir` (auto-merge files)
 - data-adapter plugins:
   - `data.adapter`: custom adapter name
   - `data.adapter_auto_discover` + `data.adapter_plugin_dirs` for folder discovery

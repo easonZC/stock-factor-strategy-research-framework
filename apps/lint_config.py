@@ -30,6 +30,7 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "Examples:\n"
             "  python apps/lint_config.py --config configs/cs_factor.yaml\n"
+            "  python apps/lint_config.py --config configs/minimal_local.yaml\n"
             "  python apps/lint_config.py --config configs/cs_factor.yaml --set run.std=cs_rank --set research.q=10\n"
             "  python apps/lint_config.py --config configs/cs_factor.yaml --strict\n"
             "  python apps/lint_config.py --config configs/cs_factor.yaml --json\n"

@@ -45,6 +45,15 @@ def test_validate_run_config_schema_unknown_root_warns() -> None:
     assert any("unknown_section" in x for x in warnings)
 
 
+def test_validate_run_config_schema_allows_minimal_sections() -> None:
+    cfg = {
+        "data": {"source": "data/raw"},
+    }
+    warnings = validate_run_config_schema(cfg, strict=True)
+    assert isinstance(warnings, list)
+    assert any("runtime defaults will be used" in x for x in warnings)
+
+
 def test_validate_run_config_schema_invalid_scope_raises() -> None:
     cfg = _valid_cfg()
     cfg["run"]["factor_scope"] = "invalid_scope"

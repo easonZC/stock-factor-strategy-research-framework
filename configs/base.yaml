@@ -17,6 +17,11 @@ run:
   fail_on_autocorrect: false
 
 data:
+  # 本地数据路径（可选）：单文件或目录（如 data/raw）
+  # 可配合 data.adapter=raw_dir，或省略 adapter 让系统自动推断
+  path: null
+  raw_pattern: "*.parquet,*.csv"
+  raw_asset_from_filename: true
   sanitize: true
   duplicate_policy: last
   # 数据适配器插件

@@ -13,7 +13,7 @@ import json
 import time
 import warnings
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -37,6 +37,7 @@ from factorlab.data import (
     build_data_adapter_registry,
     build_data_adapter_validator_registry,
     generate_synthetic_panel,
+    read_panel_directory,
     read_panel,
 )
 from factorlab.factors import (
@@ -89,6 +90,10 @@ CONFIG_ALIAS_PATHS: dict[tuple[str, ...], tuple[str, ...]] = {
     ("run", "stage_stop"): ("run", "stop_after"),
     ("data", "required_cols"): ("data", "fields_required"),
     ("data", "min_rows"): ("data", "min_rows_per_asset"),
+    ("data", "source"): ("data", "path"),
+    ("data", "dataset"): ("data", "path"),
+    ("data", "input"): ("data", "path"),
+    ("data", "raw_dir"): ("data", "path"),
     ("factor", "list"): ("factor", "names"),
     ("factor", "missing"): ("factor", "on_missing"),
     ("research", "ic_window"): ("research", "ic_rolling_window"),
@@ -741,6 +746,21 @@ def _normalize_factor_scope(cfg: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _infer_adapter_from_path(path_like: Any) -> str:
+    if path_like is None:
+        return ""
+    text = str(path_like).strip()
+    if not text:
+        return ""
+    p = Path(text)
+    suffix = p.suffix.lower()
+    if suffix == ".parquet":
+        return "parquet"
+    if suffix == ".csv":
+        return "csv"
+    return "raw_dir"
+
+
 def _normalize_data_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str, Any]:
     data_cfg = _as_dict(cfg.get("data"))
     adapter_plugin_dirs = [
@@ -753,11 +773,27 @@ def _normalize_data_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str, An
         LOGGER.warning("Invalid data.adapter_plugin_on_error='%s'. Use 'raise'.", adapter_plugin_on_error)
         adapter_plugin_on_error = "raise"
 
-    adapter = str(data_cfg.get("adapter", "synthetic")).strip().lower()
-    builtin = {"synthetic", "sina", "stooq", "parquet", "csv"}
+    path_like = data_cfg.get("path")
+    inferred_adapter = _infer_adapter_from_path(path_like)
+    adapter_raw = str(data_cfg.get("adapter", "")).strip().lower()
+    if adapter_raw in {"", "auto", "infer"}:
+        adapter = inferred_adapter or "synthetic"
+    else:
+        adapter = "raw_dir" if adapter_raw == "raw" else adapter_raw
+        if adapter == "synthetic" and inferred_adapter:
+            LOGGER.info(
+                "data.path/source provided with adapter=synthetic; auto-switch to inferred adapter '%s'.",
+                inferred_adapter,
+            )
+            adapter = inferred_adapter
+
+    builtin = {"synthetic", "sina", "stooq", "parquet", "csv", "raw_dir"}
     if adapter not in builtin and not (adapter_plugins or adapter_plugin_dirs):
         LOGGER.warning("Unknown data.adapter='%s' and no adapter plugins configured. Use synthetic.", adapter)
         adapter = "synthetic"
+
+    if adapter == "raw_dir" and not path_like:
+        path_like = "data/raw"
 
     mode_default = "single_asset" if scope == "ts" else "panel"
     mode = str(data_cfg.get("mode", mode_default)).strip().lower()
@@ -773,8 +809,10 @@ def _normalize_data_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str, An
     return {
         "mode": mode,
         "adapter": adapter,
-        "path": data_cfg.get("path"),
+        "path": path_like,
         "data_dir": data_cfg.get("data_dir"),
+        "raw_pattern": str(data_cfg.get("raw_pattern", "*.parquet,*.csv")).strip() or "*.parquet,*.csv",
+        "raw_asset_from_filename": _to_bool(data_cfg.get("raw_asset_from_filename"), True),
         "symbols": [str(x).strip() for x in _as_list(data_cfg.get("symbols")) if str(x).strip()],
         "start_date": data_cfg.get("start_date"),
         "end_date": data_cfg.get("end_date"),
@@ -1343,11 +1381,24 @@ def _validate_data_adapter_fragment(
     if adapter in {"parquet", "csv"}:
         path = data_cfg.get("path")
         if path:
-            suffix = str(path).strip().lower()
-            if adapter == "parquet" and not suffix.endswith(".parquet"):
-                warnings_out.append("data.path: adapter=parquet but file suffix is not '.parquet'.")
-            if adapter == "csv" and not suffix.endswith(".csv"):
-                warnings_out.append("data.path: adapter=csv but file suffix is not '.csv'.")
+            p = Path(str(path))
+            if p.suffix:
+                suffix = p.suffix.lower()
+                if adapter == "parquet" and suffix != ".parquet":
+                    warnings_out.append("data.path: adapter=parquet but file suffix is not '.parquet'.")
+                if adapter == "csv" and suffix != ".csv":
+                    warnings_out.append("data.path: adapter=csv but file suffix is not '.csv'.")
+            else:
+                warnings_out.append("data.path: no file suffix detected; if using directory, set data.adapter=raw_dir.")
+        return
+
+    if adapter == "raw_dir":
+        path = data_cfg.get("path")
+        if not path:
+            errors.append("data.path: required when data.adapter is raw_dir.")
+        pattern = str(data_cfg.get("raw_pattern", "*.parquet,*.csv")).strip()
+        if not pattern:
+            errors.append("data.raw_pattern: cannot be empty when data.adapter is raw_dir.")
         return
 
 
@@ -1366,19 +1417,24 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
                 "(建议改为标准键，避免后续歧义)。"
             )
 
-    root_allowed = {"run", "data", "factor", "research", "backtest", "universe_filter", "imports"}
-    root_required = {"run", "data", "factor", "research"}
+    root_allowed = {"run", "data", "factor", "research", "backtest", "universe_filter", "imports", "extends"}
+    root_required = {"data"}
 
     for key in sorted(set(cfg) - root_allowed):
         warnings.append(f"{key}: unknown root section (ignored by workflow).")
     for key in sorted(root_required):
         if key not in cfg or not isinstance(cfg.get(key), dict):
             errors.append(f"{key}: required object section is missing.")
+    for key in ["run", "factor", "research", "backtest"]:
+        if key not in cfg:
+            warnings.append(f"{key}: missing section; runtime defaults will be used.")
 
     run_cfg = _as_dict(cfg.get("run"))
-    scope = str(run_cfg.get("factor_scope", "")).strip().lower()
-    eval_axis = str(run_cfg.get("eval_axis", "")).strip().lower()
-    standardization = str(run_cfg.get("standardization", "")).strip().lower()
+    scope = str(run_cfg.get("factor_scope", "cs")).strip().lower()
+    default_eval_axis = "time" if scope == "ts" else "cross_section"
+    eval_axis = str(run_cfg.get("eval_axis", default_eval_axis)).strip().lower()
+    default_std = "ts_rolling_zscore" if scope == "ts" else "cs_zscore"
+    standardization = str(run_cfg.get("standardization", default_std)).strip().lower()
     if scope not in {"cs", "ts"}:
         errors.append("run.factor_scope: must be one of ['cs', 'ts'].")
     if eval_axis not in {"cross_section", "time"}:
@@ -1407,21 +1463,29 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
 
     data_cfg = _as_dict(cfg.get("data"))
     adapter = str(data_cfg.get("adapter", "")).strip().lower()
-    mode = str(data_cfg.get("mode", "")).strip().lower()
-    builtin_adapters = {"synthetic", "sina", "stooq", "parquet", "csv"}
+    path_like = data_cfg.get("path")
+    if adapter in {"", "auto", "infer"}:
+        adapter = _infer_adapter_from_path(path_like) or "synthetic"
+    if adapter == "raw":
+        adapter = "raw_dir"
+    mode_default = "single_asset" if scope == "ts" else "panel"
+    mode = str(data_cfg.get("mode", mode_default)).strip().lower()
+    builtin_adapters = {"synthetic", "sina", "stooq", "parquet", "csv", "raw_dir"}
     adapter_plugin_dirs = _as_list(data_cfg.get("adapter_plugin_dirs"))
     adapter_plugins = _as_list(data_cfg.get("adapter_plugins"))
     has_adapter_plugins = bool(adapter_plugin_dirs) or bool(adapter_plugins)
     if adapter not in builtin_adapters and not has_adapter_plugins:
         errors.append(
             "data.adapter: unknown adapter without data adapter plugins. "
-            "Use built-in ['synthetic', 'sina', 'stooq', 'parquet', 'csv'] "
+            "Use built-in ['synthetic', 'sina', 'stooq', 'parquet', 'csv', 'raw_dir'] "
             "or configure data.adapter_plugin_dirs/data.adapter_plugins."
         )
     if mode not in {"single_asset", "panel"}:
         errors.append("data.mode: must be one of ['single_asset', 'panel'].")
     if adapter in {"parquet", "csv"} and not data_cfg.get("path"):
         errors.append("data.path: required when data.adapter is parquet/csv.")
+    if adapter == "raw_dir" and not data_cfg.get("path"):
+        errors.append("data.path: required when data.adapter is raw_dir.")
     if adapter == "sina" and not data_cfg.get("data_dir"):
         errors.append("data.data_dir: required when data.adapter is sina.")
     if adapter == "stooq" and not _as_list(data_cfg.get("symbols")):
@@ -1435,7 +1499,7 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     factor_cfg = _as_dict(cfg.get("factor"))
     factor_names = _as_list(factor_cfg.get("names"))
     if not factor_names:
-        errors.append("factor.names: must be a non-empty list.")
+        warnings.append("factor.names: not provided; runtime default ['momentum_20'] will be used.")
     if any(not str(x).strip() for x in factor_names):
         errors.append("factor.names: contains empty factor name.")
     on_missing = str(factor_cfg.get("on_missing", "raise")).strip().lower()
@@ -1477,9 +1541,7 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
 
     research_cfg = _as_dict(cfg.get("research"))
     horizons = _as_list(research_cfg.get("horizons"))
-    if not horizons:
-        warnings.append("research.horizons: not provided; runtime defaults/profile presets will be used.")
-    else:
+    if horizons:
         for h in horizons:
             try:
                 if int(h) <= 0:
@@ -1892,20 +1954,41 @@ def _load_data(
         path = data_cfg.get("path")
         if not path:
             raise ValueError("data.path is required when data.adapter is parquet/csv")
+        if Path(str(path)).is_dir():
+            LOGGER.info("data.path points to directory; auto-switch to raw_dir loader.")
+            adapter = "raw_dir"
+        else:
+            t0 = time.perf_counter()
+            read_res = read_panel(
+                path=str(path),
+                sanitize=sanitize,
+                sanitization_config=PanelSanitizationConfig(duplicate_policy=duplicate_policy),
+                return_report=sanitize,
+            )
+            loader_report["adapter_load_seconds"] = float(time.perf_counter() - t0)
+            if sanitize:
+                panel, report = read_res
+                loader_report["sanitization_report"] = report.__dict__ if hasattr(report, "__dict__") else str(report)
+            else:
+                panel = read_res
+            _attach_panel_profile(panel, source="file_io")
+            return panel, loader_report
+
+    if adapter == "raw_dir":
+        path = data_cfg.get("path") or "data/raw"
         t0 = time.perf_counter()
-        read_res = read_panel(
-            path=str(path),
+        read_res = read_panel_directory(
+            directory=str(path),
+            pattern=str(data_cfg.get("raw_pattern", "*.parquet,*.csv")),
             sanitize=sanitize,
             sanitization_config=PanelSanitizationConfig(duplicate_policy=duplicate_policy),
-            return_report=sanitize,
+            return_report=True,
+            asset_from_filename=bool(data_cfg.get("raw_asset_from_filename", True)),
         )
+        panel, dir_report = read_res
         loader_report["adapter_load_seconds"] = float(time.perf_counter() - t0)
-        if sanitize:
-            panel, report = read_res
-            loader_report["sanitization_report"] = report.__dict__ if hasattr(report, "__dict__") else str(report)
-        else:
-            panel = read_res
-        _attach_panel_profile(panel, source="file_io")
+        loader_report["directory_report"] = asdict(dir_report)
+        _attach_panel_profile(panel, source="raw_dir")
         return panel, loader_report
 
     if adapter not in adapter_registry:
