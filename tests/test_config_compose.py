@@ -117,6 +117,29 @@ def test_compose_run_config_supports_imports_and_aliases(tmp_path: Path) -> None
     assert any(x["alias"] == "research.q" and x["applied"] for x in alias_events)
 
 
+def test_compose_run_config_alias_override_precedence(tmp_path: Path) -> None:
+    cfg = {
+        "run": {
+            "factor_scope": "cs",
+            "standardization": "none",
+            "std": "cs_rank",
+        }
+    }
+    cfg_path = tmp_path / "alias_override.yaml"
+    cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+    out, alias_events = compose_run_config_with_alias_report(
+        [cfg_path],
+        overrides=["run.standardization=cs_zscore"],
+    )
+    assert out["run"]["standardization"] == "cs_rank"
+    assert any(
+        x["alias"] == "run.std"
+        and x["reason"] == "canonical_overridden_by_alias"
+        and x["applied"]
+        for x in alias_events
+    )
+
+
 def test_compose_run_config_detects_import_cycle(tmp_path: Path) -> None:
     a_path = tmp_path / "a.yaml"
     b_path = tmp_path / "b.yaml"

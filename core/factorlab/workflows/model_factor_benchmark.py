@@ -17,6 +17,7 @@ from factorlab.factors import apply_factors, default_factor_registry
 from factorlab.models import ModelRegistry, OOFSplitConfig, train_oof_model_factor
 from factorlab.research import FactorResearchPipeline
 from factorlab.utils import get_logger, summarize_captured_warnings, timed_stage
+from factorlab.workflows.plugin_preflight import preflight_requested_components
 from factorlab.workflows.runtime import collect_runtime_manifest
 
 LOGGER = get_logger("factorlab.workflows.model_factor_benchmark")
@@ -104,6 +105,54 @@ class ModelFactorBenchmarkResult:
     comparison_csv: Path
     run_meta_json: Path
     run_manifest_json: Path
+
+
+@dataclass(slots=True)
+class BenchmarkResolvedConfig:
+    """模型基准运行时归一化配置。"""
+
+    model_plugin_dirs: list[str]
+    model_plugins: list[Any]
+    model_plugin_on_error: str
+    models: list[str]
+    model_preflight_report: dict[str, object]
+    available_models: list[str]
+    feature_cols: list[str]
+    extra_report_factors: list[str]
+    horizons: list[int]
+    neutralize_mode: str
+    winsorize_mode: str
+    duplicate_policy: str
+
+
+@dataclass(slots=True)
+class PanelPrepareResult:
+    """面板预处理阶段输出。"""
+
+    panel: pd.DataFrame
+    sanitization_report: Any
+    universe_report: Any
+    required_factor_cols: list[str]
+
+
+@dataclass(slots=True)
+class OOFTrainingStageResult:
+    """OOF 训练阶段输出。"""
+
+    panel: pd.DataFrame
+    model_rows: list[dict[str, object]]
+    factor_cols: list[str]
+    captured_warnings: list[Any]
+
+
+@dataclass(slots=True)
+class BenchmarkReportStageResult:
+    """研究报告阶段输出。"""
+
+    outputs: dict[str, str]
+    comparison_csv: Path
+    report_factors: list[str]
+    captured_warnings: list[Any]
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -221,24 +270,22 @@ def _coerce_choice(raw: str, allowed: set[str], default: str, field_name: str) -
     return default
 
 
-def _resolve_models(raw_models: list[str] | str | None) -> list[str]:
+def _resolve_models(
+    raw_models: list[str] | str | None,
+    available_models: list[str],
+) -> tuple[list[str], dict[str, object]]:
     parsed = _coerce_name_list(raw_models, default=DEFAULT_MODELS)
-    available = set(ModelRegistry.available_models())
-    resolved: list[str] = []
-    for original in parsed:
-        alias = MODEL_ALIASES.get(str(original).strip().lower(), str(original).strip().lower())
-        if alias not in available:
-            LOGGER.warning(
-                "Skip unsupported model '%s'. Available models: %s",
-                original,
-                sorted(available),
-            )
-            continue
-        if alias not in resolved:
-            resolved.append(alias)
-    if not resolved:
+    report = preflight_requested_components(
+        kind="model",
+        requested=parsed,
+        available=available_models,
+        on_missing="warn_skip",
+        alias_map=MODEL_ALIASES,
+        logger_name="factorlab.workflows.model_factor_benchmark",
+    )
+    if not report.resolved:
         raise ValueError("No valid models after normalization. Please provide at least one supported model.")
-    return resolved
+    return report.resolved, report.to_dict()
 
 
 def _apply_basic_panel_filters(
@@ -338,6 +385,334 @@ def _extract_primary_metrics(
     return _empty_primary_metrics(variant=str(variant))
 
 
+def _merge_oof_prediction_frames(pred_frames: list[pd.DataFrame]) -> pd.DataFrame:
+    """将多模型 OOF 预测一次性合并，避免对原面板反复 merge。"""
+    if not pred_frames:
+        return pd.DataFrame(columns=["date", "asset"])
+    merged = pred_frames[0].copy()
+    for frame in pred_frames[1:]:
+        merged = merged.merge(frame, on=["date", "asset"], how="outer")
+    return merged
+
+
+class BenchmarkConfigResolver:
+    """模型基准配置归一化阶段。"""
+
+    def __init__(self, config: ModelFactorBenchmarkConfig, timings: dict[str, float]):
+        self.config = config
+        self.timings = timings
+
+    def run(self) -> BenchmarkResolvedConfig:
+        model_plugin_dirs = _coerce_text_list(self.config.model_plugin_dirs)
+        model_plugins = _coerce_plugin_specs(self.config.model_plugins)
+        model_plugin_on_error = _coerce_choice(
+            raw=str(self.config.model_plugin_on_error),
+            allowed={"raise", "warn_skip"},
+            default="raise",
+            field_name="model_plugin_on_error",
+        )
+        with timed_stage("build_model_registry", timings=self.timings, logger_name="factorlab.workflows.model_factor_benchmark"):
+            registry = ModelRegistry.configure_plugins(
+                plugin_dirs=model_plugin_dirs if bool(self.config.model_auto_discover) else [],
+                plugin_specs=model_plugins,
+                on_plugin_error=model_plugin_on_error,
+                include_defaults=True,
+            )
+        available_models = sorted(registry.keys())
+        models, model_preflight_report = _resolve_models(self.config.models, available_models=available_models)
+        return BenchmarkResolvedConfig(
+            model_plugin_dirs=model_plugin_dirs,
+            model_plugins=model_plugins,
+            model_plugin_on_error=model_plugin_on_error,
+            models=models,
+            model_preflight_report=model_preflight_report,
+            available_models=available_models,
+            feature_cols=_coerce_name_list(self.config.feature_cols, default=DEFAULT_FEATURE_COLS),
+            extra_report_factors=_coerce_name_list(self.config.extra_report_factors, default=[]),
+            horizons=_coerce_int_list(self.config.horizons, default=DEFAULT_HORIZONS, min_value=1),
+            neutralize_mode=_coerce_choice(
+                raw=str(self.config.neutralize),
+                allowed={"none", "size", "industry", "both"},
+                default="both",
+                field_name="neutralize",
+            ),
+            winsorize_mode=_coerce_choice(
+                raw=str(self.config.winsorize),
+                allowed={"quantile", "mad"},
+                default="quantile",
+                field_name="winsorize",
+            ),
+            duplicate_policy=_coerce_choice(
+                raw=str(self.config.duplicate_policy),
+                allowed={"last", "first", "raise"},
+                default="last",
+                field_name="duplicate_policy",
+            ),
+        )
+
+
+class PanelPrepareStage:
+    """面板读取与预处理阶段。"""
+
+    def __init__(
+        self,
+        config: ModelFactorBenchmarkConfig,
+        resolved: BenchmarkResolvedConfig,
+        timings: dict[str, float],
+    ):
+        self.config = config
+        self.resolved = resolved
+        self.timings = timings
+
+    def run(self, panel_path: str | Path) -> PanelPrepareResult:
+        with timed_stage("read_panel", timings=self.timings, logger_name="factorlab.workflows.model_factor_benchmark"):
+            read_result = read_panel(
+                panel_path,
+                sanitize=self.config.sanitize,
+                sanitization_config=PanelSanitizationConfig(duplicate_policy=self.resolved.duplicate_policy),
+                return_report=self.config.sanitize,
+            )
+            if self.config.sanitize:
+                panel, sanitization_report = read_result
+            else:
+                panel = read_result
+                sanitization_report = None
+
+        with timed_stage("panel_prepare", timings=self.timings, logger_name="factorlab.workflows.model_factor_benchmark"):
+            prefilter_start = _compute_prefilter_start(self.config.start_date, self.config.warmup_days)
+            panel = _apply_basic_panel_filters(
+                panel=panel,
+                start_date=prefilter_start,
+                end_date=self.config.end_date,
+                max_assets=self.config.max_assets,
+            )
+
+            required_factor_cols = sorted(set(self.resolved.feature_cols + self.resolved.extra_report_factors))
+            factor_registry = default_factor_registry()
+            missing = [f for f in required_factor_cols if f not in panel.columns]
+            computable = [f for f in missing if f in factor_registry]
+            if computable:
+                panel = apply_factors(panel, computable, inplace=True)
+            unresolved = [f for f in required_factor_cols if f not in panel.columns]
+            if unresolved:
+                raise KeyError(f"Required factors missing and not computable: {unresolved}")
+
+            universe_report = None
+            if self.config.apply_universe_filter:
+                panel, universe_report = apply_universe_filter(panel, config=self.config.universe_filter)
+
+            if self.config.start_date:
+                panel = panel[panel["date"] >= pd.to_datetime(self.config.start_date)].copy()
+            panel = panel.sort_values(["date", "asset"]).reset_index(drop=True)
+            if panel.empty:
+                raise RuntimeError("Panel is empty after filtering.")
+        return PanelPrepareResult(
+            panel=panel,
+            sanitization_report=sanitization_report,
+            universe_report=universe_report,
+            required_factor_cols=required_factor_cols,
+        )
+
+
+class OOFTrainingStage:
+    """多模型 OOF 训练阶段。"""
+
+    def __init__(
+        self,
+        config: ModelFactorBenchmarkConfig,
+        resolved: BenchmarkResolvedConfig,
+        out_dir: Path,
+        timings: dict[str, float],
+    ):
+        self.config = config
+        self.resolved = resolved
+        self.out_dir = out_dir
+        self.timings = timings
+
+    def _build_oof_config(self) -> OOFSplitConfig:
+        return OOFSplitConfig(
+            train_days=int(self.config.train_days),
+            valid_days=int(self.config.valid_days),
+            step_days=int(self.config.step_days),
+            embargo_days=(
+                int(self.config.embargo_days) if self.config.embargo_days is not None else int(self.config.label_horizon)
+            ),
+            purge_days=int(self.config.purge_days),
+            split_mode=str(self.config.split_mode),
+            min_train_rows=int(self.config.min_train_rows),
+            min_valid_rows=int(self.config.min_valid_rows),
+        )
+
+    def run(self, panel: pd.DataFrame) -> OOFTrainingStageResult:
+        oof_cfg = self._build_oof_config()
+        model_rows: list[dict[str, object]] = []
+        factor_cols: list[str] = []
+        pred_frames: list[pd.DataFrame] = []
+
+        with warnings.catch_warnings(record=True) as _caught:
+            warnings.simplefilter("always")
+            for model_name in self.resolved.models:
+                with timed_stage(
+                    f"train_oof_{model_name}",
+                    timings=self.timings,
+                    logger_name="factorlab.workflows.model_factor_benchmark",
+                ):
+                    LOGGER.info("Training OOF model factor: %s", model_name)
+                    param_grid = _parse_model_param_grid(self.config.model_param_grid_dir, model_name=model_name)
+                    oof_res = train_oof_model_factor(
+                        panel=panel,
+                        feature_cols=self.resolved.feature_cols,
+                        model_name=model_name,
+                        label_horizon=int(self.config.label_horizon),
+                        split_config=oof_cfg,
+                        param_grid=param_grid,
+                        scoring_metric=str(self.config.scoring_metric),
+                        evaluation_axis=str(self.config.evaluation_axis),
+                    )
+
+                    factor_col = f"{self.config.factor_prefix}_{model_name}"
+                    oof_pred = (
+                        oof_res.oof_predictions.groupby(["date", "asset"], as_index=False)["pred"].mean().rename(
+                            columns={"pred": factor_col}
+                        )
+                    )
+                    pred_frames.append(oof_pred)
+                    factor_cols.append(factor_col)
+
+                    model_dir = self.out_dir / f"model_{model_name}"
+                    model_dir.mkdir(parents=True, exist_ok=True)
+                    pred_path = model_dir / "oof_predictions.csv"
+                    folds_path = model_dir / "oof_folds.csv"
+                    tuning_path = model_dir / "oof_tuning.csv"
+                    oof_res.oof_predictions.to_csv(pred_path, index=False)
+                    oof_res.fold_summary.to_csv(folds_path, index=False)
+                    oof_res.tuning_summary.to_csv(tuning_path, index=False)
+
+                    model_path = ""
+                    if self.config.save_model_artifacts:
+                        artifact_path = Path(self.config.model_artifact_dir) / f"{factor_col}.joblib"
+                        saved = ModelRegistry.save(
+                            model=oof_res.final_model,
+                            path=artifact_path,
+                            model_name=model_name,
+                            metadata={
+                                "feature_cols": self.resolved.feature_cols,
+                                "label_horizon": int(self.config.label_horizon),
+                                "best_params": oof_res.best_params,
+                                "oof_score_metric": str(self.config.scoring_metric),
+                                "oof_evaluation_axis": str(self.config.evaluation_axis),
+                                "best_oof_score": oof_res.best_score,
+                            },
+                        )
+                        model_path = str(saved)
+
+                    model_rows.append(
+                        {
+                            "model": model_name,
+                            "factor_name": factor_col,
+                            "oof_score_metric": str(self.config.scoring_metric),
+                            "oof_evaluation_axis": str(self.config.evaluation_axis),
+                            "best_oof_score": float(oof_res.best_score),
+                            "best_oof_rank_ic": (
+                                float(oof_res.best_score)
+                                if str(self.config.scoring_metric).strip().lower() == "rank_ic"
+                                else float("nan")
+                            ),
+                            "oof_rows": int(len(oof_res.oof_predictions)),
+                            "oof_unique_dates": int(oof_res.oof_predictions["date"].nunique()),
+                            "factor_coverage_in_panel": 0.0,
+                            "best_params_json": json.dumps(_to_jsonable(oof_res.best_params), ensure_ascii=False),
+                            "oof_predictions_csv": str(pred_path),
+                            "oof_folds_csv": str(folds_path),
+                            "oof_tuning_csv": str(tuning_path),
+                            "model_path": model_path,
+                        }
+                    )
+
+            merged_pred = _merge_oof_prediction_frames(pred_frames)
+            panel_scored = panel.merge(merged_pred, on=["date", "asset"], how="left")
+            for fac in factor_cols:
+                panel_scored[fac] = panel_scored[fac].astype(float)
+            for row in model_rows:
+                fac = str(row["factor_name"])
+                row["factor_coverage_in_panel"] = (
+                    float(panel_scored[fac].notna().mean()) if fac in panel_scored.columns and len(panel_scored) > 0 else 0.0
+                )
+
+        return OOFTrainingStageResult(
+            panel=panel_scored,
+            model_rows=model_rows,
+            factor_cols=factor_cols,
+            captured_warnings=list(_caught),
+        )
+
+
+class BenchmarkReportStage:
+    """研究报告与对比汇总阶段。"""
+
+    def __init__(
+        self,
+        config: ModelFactorBenchmarkConfig,
+        resolved: BenchmarkResolvedConfig,
+        out_dir: Path,
+        timings: dict[str, float],
+    ):
+        self.config = config
+        self.resolved = resolved
+        self.out_dir = out_dir
+        self.timings = timings
+
+    def run(
+        self,
+        panel: pd.DataFrame,
+        model_rows: list[dict[str, object]],
+        factor_cols: list[str],
+    ) -> BenchmarkReportStageResult:
+        with warnings.catch_warnings(record=True) as _caught:
+            warnings.simplefilter("always")
+            with timed_stage("research_report", timings=self.timings, logger_name="factorlab.workflows.model_factor_benchmark"):
+                report_factors = [*factor_cols, *self.resolved.extra_report_factors]
+                research_cfg = ResearchConfig(
+                    horizons=self.resolved.horizons,
+                    quantiles=int(self.config.quantiles),
+                    ic_rolling_window=int(self.config.ic_rolling_window),
+                    winsorize_method=self.resolved.winsorize_mode,
+                    neutralization=NeutralizationConfig(mode=self.resolved.neutralize_mode),
+                )
+                report_outputs = FactorResearchPipeline(research_cfg).run(
+                    panel=panel,
+                    factors=report_factors,
+                    out_dir=self.out_dir,
+                )
+
+        summary = pd.read_csv(report_outputs["summary_csv"])
+        rows: list[dict[str, object]] = []
+        for item in model_rows:
+            fac = str(item["factor_name"])
+            metrics = _extract_primary_metrics(
+                summary=summary,
+                factor_name=fac,
+                preferred_horizon=int(self.config.label_horizon),
+                variant=self.config.preferred_metric_variant,
+            )
+            row = dict(item)
+            row.update(metrics)
+            rows.append(row)
+        comparison = pd.DataFrame(rows).sort_values(
+            ["research_rank_ic_mean", "best_oof_score"],
+            ascending=[False, False],
+        )
+        comparison_path = self.out_dir / "model_factor_comparison.csv"
+        comparison.to_csv(comparison_path, index=False)
+
+        return BenchmarkReportStageResult(
+            outputs={k: str(v) for k, v in report_outputs.items()},
+            comparison_csv=comparison_path,
+            report_factors=report_factors,
+            captured_warnings=list(_caught),
+        )
+
+
 def run_model_factor_benchmark(
     panel_path: str | Path,
     out_dir: str | Path,
@@ -349,253 +724,50 @@ def run_model_factor_benchmark(
     timings: dict[str, float] = {}
     captured_warnings: list[Any] = []
 
-    model_plugin_dirs = _coerce_text_list(config.model_plugin_dirs)
-    model_plugins = _coerce_plugin_specs(config.model_plugins)
-    model_plugin_on_error = _coerce_choice(
-        raw=str(config.model_plugin_on_error),
-        allowed={"raise", "warn_skip"},
-        default="raise",
-        field_name="model_plugin_on_error",
+    resolved = BenchmarkConfigResolver(config=config, timings=timings).run()
+    panel_stage = PanelPrepareStage(config=config, resolved=resolved, timings=timings).run(panel_path=panel_path)
+    oof_stage = OOFTrainingStage(config=config, resolved=resolved, out_dir=out, timings=timings).run(
+        panel=panel_stage.panel
     )
-    with timed_stage("build_model_registry", timings=timings, logger_name="factorlab.workflows.model_factor_benchmark"):
-        registry = ModelRegistry.configure_plugins(
-            plugin_dirs=model_plugin_dirs if bool(config.model_auto_discover) else [],
-            plugin_specs=model_plugins,
-            on_plugin_error=model_plugin_on_error,
-            include_defaults=True,
-        )
-    available_models = sorted(registry.keys())
-
-    models = _resolve_models(config.models)
-    feature_cols = _coerce_name_list(config.feature_cols, default=DEFAULT_FEATURE_COLS)
-    extra_report_factors = _coerce_name_list(config.extra_report_factors, default=[])
-    horizons = _coerce_int_list(config.horizons, default=DEFAULT_HORIZONS, min_value=1)
-    neutralize_mode = _coerce_choice(
-        raw=str(config.neutralize),
-        allowed={"none", "size", "industry", "both"},
-        default="both",
-        field_name="neutralize",
+    report_stage = BenchmarkReportStage(config=config, resolved=resolved, out_dir=out, timings=timings).run(
+        panel=oof_stage.panel,
+        model_rows=oof_stage.model_rows,
+        factor_cols=oof_stage.factor_cols,
     )
-    winsorize_mode = _coerce_choice(
-        raw=str(config.winsorize),
-        allowed={"quantile", "mad"},
-        default="quantile",
-        field_name="winsorize",
-    )
-    duplicate_policy = _coerce_choice(
-        raw=str(config.duplicate_policy),
-        allowed={"last", "first", "raise"},
-        default="last",
-        field_name="duplicate_policy",
-    )
-
-    with timed_stage("read_panel", timings=timings, logger_name="factorlab.workflows.model_factor_benchmark"):
-        read_result = read_panel(
-            panel_path,
-            sanitize=config.sanitize,
-            sanitization_config=PanelSanitizationConfig(duplicate_policy=duplicate_policy),
-            return_report=config.sanitize,
-        )
-        if config.sanitize:
-            panel, sanitization_report = read_result
-        else:
-            panel = read_result
-            sanitization_report = None
-
-    with timed_stage("panel_prepare", timings=timings, logger_name="factorlab.workflows.model_factor_benchmark"):
-        prefilter_start = _compute_prefilter_start(config.start_date, config.warmup_days)
-        panel = _apply_basic_panel_filters(
-            panel=panel,
-            start_date=prefilter_start,
-            end_date=config.end_date,
-            max_assets=config.max_assets,
-        )
-
-        required_factor_cols = sorted(set(feature_cols + extra_report_factors))
-        registry = default_factor_registry()
-        missing = [f for f in required_factor_cols if f not in panel.columns]
-        computable = [f for f in missing if f in registry]
-        if computable:
-            panel = apply_factors(panel, computable, inplace=True)
-        unresolved = [f for f in required_factor_cols if f not in panel.columns]
-        if unresolved:
-            raise KeyError(f"Required factors missing and not computable: {unresolved}")
-
-        universe_report = None
-        if config.apply_universe_filter:
-            panel, universe_report = apply_universe_filter(panel, config=config.universe_filter)
-
-        if config.start_date:
-            panel = panel[panel["date"] >= pd.to_datetime(config.start_date)].copy()
-        panel = panel.sort_values(["date", "asset"]).reset_index(drop=True)
-        if panel.empty:
-            raise RuntimeError("Panel is empty after filtering.")
-
-    oof_cfg = OOFSplitConfig(
-        train_days=int(config.train_days),
-        valid_days=int(config.valid_days),
-        step_days=int(config.step_days),
-        embargo_days=(
-            int(config.embargo_days) if config.embargo_days is not None else int(config.label_horizon)
-        ),
-        purge_days=int(config.purge_days),
-        split_mode=str(config.split_mode),
-        min_train_rows=int(config.min_train_rows),
-        min_valid_rows=int(config.min_valid_rows),
-    )
-
-    model_rows: list[dict[str, object]] = []
-    factor_cols: list[str] = []
-    with warnings.catch_warnings(record=True) as _caught:
-        warnings.simplefilter("always")
-
-        for model_name in models:
-            with timed_stage(
-                f"train_oof_{model_name}",
-                timings=timings,
-                logger_name="factorlab.workflows.model_factor_benchmark",
-            ):
-                LOGGER.info("Training OOF model factor: %s", model_name)
-                param_grid = _parse_model_param_grid(config.model_param_grid_dir, model_name=model_name)
-                oof_res = train_oof_model_factor(
-                    panel=panel,
-                    feature_cols=feature_cols,
-                    model_name=model_name,
-                    label_horizon=int(config.label_horizon),
-                    split_config=oof_cfg,
-                    param_grid=param_grid,
-                    scoring_metric=str(config.scoring_metric),
-                    evaluation_axis=str(config.evaluation_axis),
-                )
-
-                factor_col = f"{config.factor_prefix}_{model_name}"
-                oof_pred = (
-                    oof_res.oof_predictions.groupby(["date", "asset"], as_index=False)["pred"].mean().rename(
-                        columns={"pred": factor_col}
-                    )
-                )
-                if factor_col in panel.columns:
-                    panel = panel.drop(columns=[factor_col])
-                panel = panel.merge(oof_pred, on=["date", "asset"], how="left")
-                panel[factor_col] = panel[factor_col].astype(float)
-                factor_cols.append(factor_col)
-
-                model_dir = out / f"model_{model_name}"
-                model_dir.mkdir(parents=True, exist_ok=True)
-                pred_path = model_dir / "oof_predictions.csv"
-                folds_path = model_dir / "oof_folds.csv"
-                tuning_path = model_dir / "oof_tuning.csv"
-                oof_res.oof_predictions.to_csv(pred_path, index=False)
-                oof_res.fold_summary.to_csv(folds_path, index=False)
-                oof_res.tuning_summary.to_csv(tuning_path, index=False)
-
-                model_path = ""
-                if config.save_model_artifacts:
-                    artifact_path = Path(config.model_artifact_dir) / f"{factor_col}.joblib"
-                    saved = ModelRegistry.save(
-                        model=oof_res.final_model,
-                        path=artifact_path,
-                        model_name=model_name,
-                        metadata={
-                            "feature_cols": feature_cols,
-                            "label_horizon": int(config.label_horizon),
-                            "best_params": oof_res.best_params,
-                            "oof_score_metric": str(config.scoring_metric),
-                            "oof_evaluation_axis": str(config.evaluation_axis),
-                            "best_oof_score": oof_res.best_score,
-                        },
-                    )
-                    model_path = str(saved)
-
-                coverage = float(panel[factor_col].notna().mean()) if len(panel) > 0 else 0.0
-                model_rows.append(
-                    {
-                        "model": model_name,
-                        "factor_name": factor_col,
-                        "oof_score_metric": str(config.scoring_metric),
-                        "oof_evaluation_axis": str(config.evaluation_axis),
-                        "best_oof_score": float(oof_res.best_score),
-                        "best_oof_rank_ic": (
-                            float(oof_res.best_score)
-                            if str(config.scoring_metric).strip().lower() == "rank_ic"
-                            else float("nan")
-                        ),
-                        "oof_rows": int(len(oof_res.oof_predictions)),
-                        "oof_unique_dates": int(oof_res.oof_predictions["date"].nunique()),
-                        "factor_coverage_in_panel": coverage,
-                        "best_params_json": json.dumps(_to_jsonable(oof_res.best_params), ensure_ascii=False),
-                        "oof_predictions_csv": str(pred_path),
-                        "oof_folds_csv": str(folds_path),
-                        "oof_tuning_csv": str(tuning_path),
-                        "model_path": model_path,
-                    }
-                )
-
-        with timed_stage("research_report", timings=timings, logger_name="factorlab.workflows.model_factor_benchmark"):
-            report_factors = [*factor_cols, *extra_report_factors]
-            research_cfg = ResearchConfig(
-                horizons=horizons,
-                quantiles=int(config.quantiles),
-                ic_rolling_window=int(config.ic_rolling_window),
-                winsorize_method=winsorize_mode,
-                neutralization=NeutralizationConfig(mode=neutralize_mode),
-            )
-            report_outputs = FactorResearchPipeline(research_cfg).run(
-                panel=panel,
-                factors=report_factors,
-                out_dir=out,
-            )
-        captured_warnings.extend(list(_caught))
-
-    summary = pd.read_csv(report_outputs["summary_csv"])
-    rows: list[dict[str, object]] = []
-    for item in model_rows:
-        fac = str(item["factor_name"])
-        metrics = _extract_primary_metrics(
-            summary=summary,
-            factor_name=fac,
-            preferred_horizon=int(config.label_horizon),
-            variant=config.preferred_metric_variant,
-        )
-        row = dict(item)
-        row.update(metrics)
-        rows.append(row)
-    comparison = pd.DataFrame(rows).sort_values(
-        ["research_rank_ic_mean", "best_oof_score"],
-        ascending=[False, False],
-    )
-    comparison_path = out / "model_factor_comparison.csv"
-    comparison.to_csv(comparison_path, index=False)
+    captured_warnings.extend(oof_stage.captured_warnings)
+    captured_warnings.extend(report_stage.captured_warnings)
 
     run_meta = {
         "panel_path": str(panel_path),
         "config": config,
-        "resolved_models": models,
+        "resolved_models": resolved.models,
+        "model_preflight_report": resolved.model_preflight_report,
         "model_plugin_config": {
             "auto_discover": bool(config.model_auto_discover),
-            "plugin_dirs": model_plugin_dirs,
-            "plugins": model_plugins,
-            "plugin_on_error": model_plugin_on_error,
-            "registry_size": len(available_models),
-            "registry_models": available_models,
+            "plugin_dirs": resolved.model_plugin_dirs,
+            "plugins": resolved.model_plugins,
+            "plugin_on_error": resolved.model_plugin_on_error,
+            "registry_size": len(resolved.available_models),
+            "registry_models": resolved.available_models,
         },
-        "resolved_feature_cols": feature_cols,
-        "resolved_horizons": horizons,
-        "report_factors": report_factors,
+        "resolved_feature_cols": resolved.feature_cols,
+        "resolved_horizons": resolved.horizons,
+        "report_factors": report_stage.report_factors,
         "sanitize_enabled": bool(config.sanitize),
-        "sanitization_report": sanitization_report,
+        "sanitization_report": panel_stage.sanitization_report,
         "universe_filter_enabled": bool(config.apply_universe_filter),
-        "universe_report": universe_report,
-        "rows_after_filters": int(len(panel)),
-        "assets_after_filters": int(panel["asset"].nunique()),
-        "dates_after_filters": int(panel["date"].nunique()),
+        "universe_report": panel_stage.universe_report,
+        "required_factor_cols": panel_stage.required_factor_cols,
+        "rows_after_filters": int(len(oof_stage.panel)),
+        "assets_after_filters": int(oof_stage.panel["asset"].nunique()),
+        "dates_after_filters": int(oof_stage.panel["date"].nunique()),
         "timings_seconds": timings,
         "warning_summary": summarize_captured_warnings(
             captured_warnings,
             logger_name="factorlab.workflows.model_factor_benchmark",
         ),
-        "outputs": {k: str(v) for k, v in report_outputs.items()},
-        "comparison_csv": str(comparison_path),
+        "outputs": dict(report_stage.outputs),
+        "comparison_csv": str(report_stage.comparison_csv),
     }
     run_meta_path = _write_json(out / "run_meta.json", run_meta)
     run_manifest_path = _write_json(
@@ -603,13 +775,13 @@ def run_model_factor_benchmark(
         collect_runtime_manifest(repo_root=repo_root),
     )
 
-    index_html = Path(report_outputs["index_html"])
-    summary_csv = Path(report_outputs["summary_csv"])
+    index_html = Path(report_stage.outputs["index_html"])
+    summary_csv = Path(report_stage.outputs["summary_csv"])
     return ModelFactorBenchmarkResult(
         out_dir=out,
         index_html=index_html,
         summary_csv=summary_csv,
-        comparison_csv=comparison_path,
+        comparison_csv=report_stage.comparison_csv,
         run_meta_json=run_meta_path,
         run_manifest_json=run_manifest_path,
     )

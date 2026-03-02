@@ -86,3 +86,26 @@ def test_train_oof_model_factor_supports_mse_and_time_axis() -> None:
     assert {"mean_oof_score", "score_metric", "evaluation_axis"}.issubset(res.tuning_summary.columns)
     assert set(res.tuning_summary["score_metric"]) == {"mse"}
     assert set(res.tuning_summary["evaluation_axis"]) == {"time"}
+
+
+def test_train_oof_model_factor_raises_when_dates_insufficient() -> None:
+    panel = generate_synthetic_panel(SyntheticConfig(n_assets=6, n_days=70, seed=9, start_date="2021-01-01"))
+    panel = panel.sort_values(["date", "asset"]).reset_index(drop=True)
+    cfg = OOFSplitConfig(
+        train_days=60,
+        valid_days=20,
+        step_days=10,
+        embargo_days=5,
+        purge_days=0,
+        split_mode="rolling",
+        min_train_rows=120,
+        min_valid_rows=40,
+    )
+    with pytest.raises(RuntimeError, match="Not enough unique dates"):
+        train_oof_model_factor(
+            panel=panel,
+            feature_cols=["close", "volume", "mkt_cap"],
+            model_name="ridge",
+            label_horizon=5,
+            split_config=cfg,
+        )
