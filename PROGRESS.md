@@ -92,8 +92,11 @@ For every complete run, append one new entry at the top of `Run History` with:
   - Renamed app entrypoints run successfully for synthetic/panel/sina/config workflows.
   - Codex P1 issues now covered by direct assertions in new tests.
 - Git actions:
-  - Pending in this run: commit/push rename + bugfix set and update PR #2.
+  - Local commit succeeded: `cf6eeb0` (`refactor(naming): rename to factorlab and fix codex p1 findings`).
+  - Push succeeded: `git push origin refactor/ssf-v2`.
+  - Previous PR #2 is already merged; a follow-up PR is required for this run's new commit.
 - Next run direction:
+  - Open follow-up PR from `refactor/ssf-v2` to `main` for this naming+bugfix patchset.
   - Finish any additional naming preferences (if needed) and keep all new contributions under `apps/` + `core/factorlab/`.
 
 ### Run 2026-03-01-004
