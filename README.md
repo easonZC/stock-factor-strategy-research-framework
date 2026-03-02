@@ -131,6 +131,20 @@ factor:
 
 Your plugin file can define a `Factor` subclass (or `get_factor_registry` / `FACTOR_REGISTRY`) and it will be discoverable.
 
+### Factor Expression Composer Example
+```yaml
+factor:
+  names: [mom_minus_vol]
+  expressions:
+    mom_minus_vol: "momentum_20 - volatility_20"
+  expression_on_error: raise
+```
+
+Expressions are evaluated with a safe parser (no arbitrary code execution). Supported operations:
+- arithmetic: `+ - * / **`
+- unary: `+x`, `-x`
+- functions: `abs(x)`, `log1p(x)`, `exp(x)`, `sqrt(x)`, `clip(x, lo, hi)`
+
 ## Typical Report Output Tree
 ```text
 outputs/research/factor/panel_report/

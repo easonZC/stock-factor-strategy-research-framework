@@ -53,6 +53,59 @@ For every complete run, append one new entry at the top of `Run History` with:
 
 ## Run History
 
+### Run 2026-03-01-010
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal: Implement factor expression composer (safe parser) and integrate it into config-driven one-click research workflow.
+- Changes:
+  - Added safe factor-expression module:
+    - `core/factorlab/factors/expression.py`
+    - capabilities:
+      - safe AST validation (`validate_factor_expression`)
+      - dependency extraction (`extract_expression_dependencies`)
+      - single expression evaluation (`evaluate_factor_expression`)
+      - batch expression application (`apply_factor_expressions`)
+    - supported operations:
+      - arithmetic `+ - * / **`
+      - unary `+x/-x`
+      - functions `abs/log1p/exp/sqrt/clip`
+  - Exposed expression utilities in factors package:
+    - `core/factorlab/factors/__init__.py`
+  - Integrated expression composer into config runner:
+    - `core/factorlab/workflows/config_runner.py`
+      - new factor config keys:
+        - `expressions`
+        - `expression_on_error` (`raise|warn_skip`)
+      - computes dependency factors automatically from expression dependencies
+      - evaluates expression factors before report/backtest stages
+      - supports unresolved requested-factor handling consistent with `on_missing`
+      - writes expression compute/skip/errors metadata into `run_meta.json`
+      - schema validator now validates expression format and safety.
+  - Updated config template generator defaults:
+    - `apps/generate_run_config.py`
+      - adds `factor.expressions` and `factor.expression_on_error`.
+  - Updated README usage docs:
+    - added factor expression composer config example and supported operation list.
+  - Added tests:
+    - `tests/test_factor_expression_composer.py`
+    - updated `tests/test_config_schema_validation.py` with invalid-expression validation case.
+- Validation commands:
+  - `python3 -m ruff check core apps tests`
+  - `python3 -m pytest -q`
+  - `python3 apps/run_from_config.py --config /tmp/expr_cfg.yaml --out outputs/research/factor/expression_check`
+  - `python3 apps/run_from_config.py --config /tmp/expr_cfg.yaml --set factor.expressions.bad=\"__import__('os')\" --out outputs/research/factor/expression_bad_check`
+- Validation summary:
+  - Lint passed.
+  - Tests passed: `25 passed`.
+  - Expression-factor report generation succeeded end-to-end.
+  - Unsafe expression is blocked by schema pre-validation with explicit error.
+- Git actions:
+  - Working branch: `feat/plugin-schema-validation-20260301` (continued for stacked feature work).
+  - Local commit: pending
+  - Push: pending
+- Next run direction:
+  - Add strategy plugin registry symmetry (discover/load custom `Strategy` classes).
+  - Add expression aliases/templates and per-scope expression validation helpers.
+
 ### Run 2026-03-01-009
 - Time: 2026-03-01 (America/Los_Angeles)
 - Goal: Implement next-step roadmap: factor plugin auto-discovery and pre-runtime config schema validation.

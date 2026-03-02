@@ -28,7 +28,12 @@ from factorlab.data import (
     prepare_sina_panel,
     read_panel,
 )
-from factorlab.factors import apply_factors, build_factor_registry
+from factorlab.factors import (
+    apply_factor_expressions,
+    apply_factors,
+    build_factor_registry,
+    extract_expression_dependencies,
+)
 from factorlab.research import FactorResearchPipeline, TSResearchConfig, TimeSeriesFactorResearchPipeline
 from factorlab.strategies import FlexibleLongShortStrategy, LongShortQuantileStrategy, Strategy, TopKLongStrategy
 from factorlab.utils import get_logger
@@ -175,6 +180,60 @@ def _normalize_data_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str, An
     }
 
 
+def _normalize_factor_expressions(raw: Any, strict: bool = False) -> dict[str, str]:
+    out: dict[str, str] = {}
+
+    def _add(name: Any, expr: Any) -> None:
+        fac_name = str(name).strip()
+        fac_expr = str(expr).strip()
+        if not fac_name or not fac_expr:
+            raise ValueError(f"Invalid expression entry: name={name!r}, expression={expr!r}")
+        out[fac_name] = fac_expr
+
+    if raw is None:
+        return {}
+
+    try:
+        if isinstance(raw, dict):
+            for k, v in raw.items():
+                _add(k, v)
+            return out
+
+        if isinstance(raw, list):
+            for entry in raw:
+                if isinstance(entry, str):
+                    text = entry.strip()
+                    if "=" not in text:
+                        raise ValueError(f"Expression list item must be 'name=expr', got: {entry!r}")
+                    name, expr = text.split("=", 1)
+                    _add(name, expr)
+                    continue
+                if isinstance(entry, dict):
+                    name = entry.get("name")
+                    expr = entry.get("expression")
+                    if name is None or expr is None:
+                        raise ValueError(f"Expression dict item requires keys 'name' and 'expression': {entry!r}")
+                    _add(name, expr)
+                    continue
+                raise ValueError(f"Unsupported expression list item type: {type(entry)}")
+            return out
+
+        if isinstance(raw, str):
+            text = raw.strip()
+            if "=" not in text:
+                raise ValueError(f"Expression string must be 'name=expr', got: {raw!r}")
+            name, expr = text.split("=", 1)
+            _add(name, expr)
+            return out
+
+        raise ValueError(f"Unsupported factor.expressions type: {type(raw)}")
+    except Exception:
+        if strict:
+            raise
+        LOGGER.warning("Ignore invalid factor.expressions value: %r", raw)
+        return {}
+
+
 def _normalize_factor_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     fac_cfg = _as_dict(cfg.get("factor"))
     names = [str(x).strip() for x in _as_list(fac_cfg.get("names")) if str(x).strip()]
@@ -192,6 +251,12 @@ def _normalize_factor_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     plugin_dirs = [str(x).strip() for x in _as_list(fac_cfg.get("plugin_dirs")) if str(x).strip()]
     auto_discover = _to_bool(fac_cfg.get("auto_discover"), bool(plugin_dirs))
     plugins = [x for x in _as_list(fac_cfg.get("plugins")) if x is not None and x != ""]
+    expression_on_error = str(fac_cfg.get("expression_on_error", "raise")).strip().lower()
+    if expression_on_error not in {"raise", "warn_skip"}:
+        LOGGER.warning("Invalid factor.expression_on_error='%s'. Use 'raise'.", expression_on_error)
+        expression_on_error = "raise"
+
+    expressions = _normalize_factor_expressions(fac_cfg.get("expressions"), strict=False)
 
     return {
         "names": names,
@@ -200,6 +265,8 @@ def _normalize_factor_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
         "plugin_dirs": plugin_dirs,
         "auto_discover": auto_discover,
         "plugin_on_error": plugin_on_error,
+        "expression_on_error": expression_on_error,
+        "expressions": expressions,
     }
 
 
@@ -426,6 +493,21 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     plugin_on_error = str(factor_cfg.get("plugin_on_error", "raise")).strip().lower()
     if plugin_on_error not in {"raise", "warn_skip"}:
         errors.append("factor.plugin_on_error: must be one of ['raise', 'warn_skip'].")
+    expression_on_error = str(factor_cfg.get("expression_on_error", "raise")).strip().lower()
+    if expression_on_error not in {"raise", "warn_skip"}:
+        errors.append("factor.expression_on_error: must be one of ['raise', 'warn_skip'].")
+
+    try:
+        expressions = _normalize_factor_expressions(factor_cfg.get("expressions"), strict=True)
+        for name, expr in expressions.items():
+            if not str(name).strip():
+                errors.append("factor.expressions: expression output name cannot be empty.")
+            try:
+                extract_expression_dependencies(expr)
+            except Exception as exc:
+                errors.append(f"factor.expressions[{name}]: invalid expression ({exc}).")
+    except Exception as exc:
+        errors.append(f"factor.expressions: invalid format ({exc}).")
 
     research_cfg = _as_dict(cfg.get("research"))
     horizons = _as_list(research_cfg.get("horizons"))
@@ -584,6 +666,8 @@ def _filter_factors_by_available_columns(
     factor_names: list[str],
     on_missing: str,
 ) -> tuple[list[str], list[str]]:
+    if not factor_names:
+        return [], []
     if on_missing != "warn_skip":
         return factor_names, []
 
@@ -602,8 +686,6 @@ def _filter_factors_by_available_columns(
             skipped.append(name)
             continue
         selected.append(name)
-    if not selected:
-        raise RuntimeError("No valid factors available after checking required columns.")
     return selected, skipped
 
 
@@ -620,6 +702,8 @@ def _compute_factors(
     registry: dict[str, Any],
 ) -> tuple[pd.DataFrame, list[str], list[str]]:
     out = panel.copy()
+    if not factor_names:
+        return out, [], []
     missing = [f for f in factor_names if f not in out.columns]
     computable = [f for f in missing if f in registry]
     if computable:
@@ -631,8 +715,6 @@ def _compute_factors(
         else:
             raise KeyError(f"Factors missing and not computable: {unresolved}")
     selected = [f for f in factor_names if f not in unresolved]
-    if not selected:
-        raise RuntimeError("No valid factors available after resolving factor names.")
     return out, computable, selected
 
 
@@ -759,9 +841,18 @@ def run_from_config(
         on_plugin_error=fac_cfg["plugin_on_error"],
     )
     requested_factors = list(fac_cfg["names"])
+    expressions = dict(fac_cfg["expressions"])
+    expression_outputs = set(expressions.keys())
+    expression_dependencies: set[str] = set()
+    for expr in expressions.values():
+        expression_dependencies.update(extract_expression_dependencies(expr))
+    expression_dependencies -= expression_outputs
+
+    auto_factor_candidates = sorted((set(requested_factors) - expression_outputs) | expression_dependencies)
+
     candidate_factors, precheck_skipped_factors = _filter_factors_by_available_columns(
         panel=panel,
-        factor_names=requested_factors,
+        factor_names=auto_factor_candidates,
         on_missing=fac_cfg["on_missing"],
     )
     required_fields = _resolve_required_fields(
@@ -777,6 +868,24 @@ def run_from_config(
         on_missing=fac_cfg["on_missing"],
         registry=factor_registry,
     )
+    panel, computed_expression_factors, skipped_expression_factors, expression_errors = apply_factor_expressions(
+        panel,
+        expressions=expressions,
+        on_error=fac_cfg["expression_on_error"],
+    )
+
+    unresolved_requested = [f for f in requested_factors if f not in panel.columns]
+    if unresolved_requested:
+        if fac_cfg["on_missing"] == "warn_skip":
+            LOGGER.warning(
+                "Skip unresolved requested factors due to factor.on_missing=warn_skip: %s",
+                unresolved_requested,
+            )
+        else:
+            raise KeyError(f"Requested factors missing after compute/expression steps: {unresolved_requested}")
+    effective_factors = [f for f in requested_factors if f in panel.columns]
+    if not effective_factors:
+        raise RuntimeError("No effective requested factors available after compute/expression steps.")
 
     universe_report = None
     if scope_cfg["factor_scope"] == "cs" and universe_cfg["enabled"]:
@@ -838,11 +947,19 @@ def run_from_config(
         },
         "factors": {
             "requested": requested_factors,
+            "auto_factor_candidates": auto_factor_candidates,
             "candidate_after_precheck": candidate_factors,
             "skipped_in_precheck": precheck_skipped_factors,
             "effective": effective_factors,
             "computed_factors": computed_factors,
+            "computed_expression_factors": computed_expression_factors,
+            "skipped_expression_factors": skipped_expression_factors,
+            "expression_errors": expression_errors,
+            "unresolved_requested": unresolved_requested,
             "on_missing": fac_cfg["on_missing"],
+            "expression_on_error": fac_cfg["expression_on_error"],
+            "expressions": expressions,
+            "expression_dependencies": sorted(expression_dependencies),
             "plugin_config": {
                 "auto_discover": fac_cfg["auto_discover"],
                 "plugin_dirs": fac_cfg["plugin_dirs"],

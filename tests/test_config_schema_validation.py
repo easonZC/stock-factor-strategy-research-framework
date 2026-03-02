@@ -46,6 +46,13 @@ def test_validate_run_config_schema_invalid_scope_raises() -> None:
         validate_run_config_schema(cfg, strict=True)
 
 
+def test_validate_run_config_schema_invalid_expression_raises() -> None:
+    cfg = _valid_cfg()
+    cfg["factor"]["expressions"] = {"bad_expr": "__import__('os').system('echo x')"}
+    with pytest.raises(ValueError, match="factor.expressions"):
+        validate_run_config_schema(cfg, strict=True)
+
+
 def test_run_from_config_can_skip_schema_validation(tmp_path: Path) -> None:
     cfg = _valid_cfg()
     cfg["research"]["preprocess_steps"] = ["winsorize", "bad_step"]
