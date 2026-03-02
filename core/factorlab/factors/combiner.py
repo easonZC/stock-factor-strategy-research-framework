@@ -1,4 +1,4 @@
-"""Composable multi-factor combination utilities."""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -77,7 +77,7 @@ def _normalize_combination_entry(entry: Any) -> dict[str, Any]:
 
 
 def normalize_factor_combinations(raw: Any, strict: bool = False) -> list[dict[str, Any]]:
-    """Normalize factor-combination config into canonical list payload."""
+    """中文说明。"""
     if raw is None:
         return []
     entries: list[Any]
@@ -133,7 +133,7 @@ def apply_factor_combinations(
     combinations: list[dict[str, Any]],
     on_error: str = "raise",
 ) -> tuple[pd.DataFrame, list[str], list[str], list[str]]:
-    """Apply configured multi-factor combinations on top of existing columns."""
+    """中文说明。"""
     out = panel.copy()
     computed: list[str] = []
     skipped: list[str] = []

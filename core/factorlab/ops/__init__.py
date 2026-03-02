@@ -1,4 +1,4 @@
-"""运维与清理工具导出。"""
+"""模块说明。"""
 
 from .retention import OutputRetentionManager, RetentionPolicy, RetentionRunResult
 

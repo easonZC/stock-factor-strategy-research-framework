@@ -49,6 +49,7 @@ FactorLab v2 separates orchestration from reusable research logic:
 - `factor_scope`: `cs` or `ts`
 - `eval_axis`: `cross_section` or `time`
 - `standardization`: scope-aware choice
+- `stop_after`: `factor|research|backtest`，支持分阶段提前停止以加速迭代
 - optional universe filter + optional backtest
 - run metadata/manifests for reproducibility
 - config overrides support `= / += / -=` operators (see `docs/config_overrides.md`)

@@ -1,4 +1,4 @@
-"""Built-in strategy implementations."""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def _normalize_long(weights: pd.Series, max_weight: float | None = None) -> pd.S
                 f"max_weight={cap} is infeasible for {len(w)} positions in long-only normalization."
             )
         if cap < 1.0:
-            # Iterative capped re-allocation: enforce cap and preserve total sum=1.
+            # 迭代式封顶再分配：在保持总和为 1 的前提下执行单票上限。
             base = w.copy()
             out = pd.Series(0.0, index=w.index, dtype=float)
             capped = pd.Series(False, index=w.index)
@@ -78,7 +78,7 @@ def _weights_from_scores(scores: pd.Series, scheme: str) -> pd.Series:
 
 @dataclass(slots=True)
 class TopKLongStrategy(Strategy):
-    """Equal-weight long-only top-k strategy."""
+    """等权 TopK 多头策略。"""
 
     top_k: int = 20
     rebalance_every: int = 1
@@ -115,7 +115,7 @@ class TopKLongStrategy(Strategy):
 
 @dataclass(slots=True)
 class LongShortQuantileStrategy(Strategy):
-    """Long top quantile, short bottom quantile with equal absolute weights."""
+    """做多高分位、做空低分位的等绝对权重策略。"""
 
     quantile: float = 0.2
     rebalance_every: int = 1
@@ -165,7 +165,7 @@ class LongShortQuantileStrategy(Strategy):
 
 @dataclass(slots=True)
 class FlexibleLongShortStrategy(Strategy):
-    """Configurable long-short strategy with optional long-only mode."""
+    """可配置多空策略（支持 long-only 模式）。"""
 
     long_fraction: float = 0.2
     short_fraction: float = 0.2

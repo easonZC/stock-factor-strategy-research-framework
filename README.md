@@ -178,9 +178,12 @@ python apps/run_from_config.py \
   - `--model-plugin-on-error`
 - `research.missing_policy`: `drop|fill_zero|ffill_by_asset|cs_median_by_date|keep`
 - `research.preprocess_steps`: ordered list from `winsorize|standardize|neutralize`
+- `research.annualization_days`: annualization base for Sharpe/Sortino/Calmar and alpha stats
+- `research.ts_signal_lags`: TS signal lag IC profile, e.g. `[0,1,2,5,10]`
 - `run.config_mode`: `strict|warn|compat` (strict blocks auto-corrections; warn records and continues)
 - `run.fail_on_autocorrect`: fail the run whenever normalization changed user-provided values
 - `run.leakage_guard_mode`: `strict|warn|off` to guard forbidden future/label references
+- `run.stop_after`: `factor|research|backtest` (stage-level stop for faster iteration)
 - `backtest.strategy.mode`: built-in `sign|topk|longshort|flex|meanvar` or plugin-defined mode
 - `backtest` risk controls: `max_turnover|max_abs_weight|max_gross_exposure|max_net_exposure`
 - `backtest.benchmark_mode`: `none|cross_sectional_mean|panel_column`

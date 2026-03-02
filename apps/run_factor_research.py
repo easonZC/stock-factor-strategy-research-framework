@@ -1,4 +1,4 @@
-﻿"""Run factor research from an input panel file."""
+﻿"""从输入面板运行因子研究。"""
 
 from __future__ import annotations
 

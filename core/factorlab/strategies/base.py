@@ -1,4 +1,4 @@
-﻿"""Strategy interface definitions."""
+﻿"""策略接口定义。"""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ import pandas as pd
 
 @dataclass(slots=True)
 class Strategy(ABC):
-    """Abstract strategy interface producing date/asset weights."""
+    """中文说明。"""
 
     name: str
 
     @abstractmethod
     def generate_weights(self, score_df: pd.DataFrame) -> pd.DataFrame:
-        """Input columns: date, asset, score. Output columns: date, asset, weight."""
+        """中文说明。"""

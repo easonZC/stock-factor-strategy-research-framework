@@ -1,4 +1,4 @@
-﻿"""Strategy package exports."""
+﻿"""策略模块导出。"""
 
 from .base import Strategy
 from .factory import (

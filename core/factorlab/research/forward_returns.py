@@ -1,4 +1,4 @@
-﻿"""Forward-return label generation for multi-horizon factor testing."""
+﻿"""多持有期因子测试的未来收益标签生成。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import pandas as pd
 
 
 def add_forward_returns(panel: pd.DataFrame, horizons: list[int], price_col: str = "close") -> pd.DataFrame:
-    """Append `fwd_ret_{h}` columns to panel using per-asset future prices."""
+    """中文说明。"""
     df = panel.sort_values(["asset", "date"]).copy()
     for h in horizons:
         df[f"fwd_ret_{h}"] = (

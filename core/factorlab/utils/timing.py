@@ -1,4 +1,4 @@
-"""Small timing helpers for workflow-stage diagnostics."""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def timed_stage(
     timings: dict[str, float] | None = None,
     logger_name: str = "factorlab",
 ) -> Iterator[None]:
-    """Measure one stage elapsed time and optionally collect/log it."""
+    """中文说明。"""
     start = time.perf_counter()
     try:
         yield

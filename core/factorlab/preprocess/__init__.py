@@ -1,4 +1,4 @@
-"""Preprocessing package exports."""
+"""模块说明。"""
 
 from .factory import (
     build_transform_registry,

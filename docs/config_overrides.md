@@ -12,6 +12,7 @@ Syntax: `path.to.key<op>value`
 ```bash
 --set research.quantiles=10
 --set run.standardization=cs_rank
+--set run.stop_after=research
 --set research.horizons='[1,5,10,20]'
 ```
 

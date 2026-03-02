@@ -1,4 +1,4 @@
-"""单资产时间轴评估的时序因子研究流水线。"""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -54,6 +54,7 @@ class TSResearchConfig:
     horizons: list[int] = field(default_factory=lambda: [1, 5, 10, 20])
     quantiles: int = 5
     ic_rolling_window: int = 20
+    annualization_days: int = 252
     standardization: TSStandardizeMode = "ts_rolling_zscore"
     ts_standardize_window: int = 60
     ts_quantile_lookback: int = 60
@@ -174,7 +175,7 @@ def _compute_time_ic_series(
         if len(g) < max(min_obs_per_asset, minp):
             continue
         g["ic"] = g[factor_col].rolling(window=window, min_periods=minp).corr(g[ret_col])
-        # 用资产内排序近似滚动 RankIC，保持实现轻量且稳定。
+        # 用资产内排序近似滚动秩信息系数，保持实现轻量且稳定。
         ranked_factor = g[factor_col].rank(method="average")
         ranked_ret = g[ret_col].rank(method="average")
         g["rank_ic"] = ranked_factor.rolling(window=window, min_periods=minp).corr(ranked_ret)
@@ -325,7 +326,10 @@ class TimeSeriesFactorResearchPipeline:
             q_turn.to_csv(q_turn_path, index=False)
             fac_tables.extend([q_daily_path, q_nav_path, q_turn_path])
 
-            q_profile = summarize_quantile_profile(q_daily, annualization_days=252)
+            q_profile = summarize_quantile_profile(
+                q_daily,
+                annualization_days=int(self.config.annualization_days),
+            )
             q_profile_path = fac_table_dir / "quantile_profile.csv"
             q_profile.to_csv(q_profile_path, index=False)
             fac_tables.append(q_profile_path)
@@ -434,6 +438,7 @@ class TimeSeriesFactorResearchPipeline:
                 {
                     "horizons": self.config.horizons,
                     "quantiles": self.config.quantiles,
+                    "annualization_days": self.config.annualization_days,
                     "standardization": self.config.standardization,
                     "ts_standardize_window": self.config.ts_standardize_window,
                     "ts_quantile_lookback": self.config.ts_quantile_lookback,

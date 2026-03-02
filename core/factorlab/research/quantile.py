@@ -1,4 +1,4 @@
-﻿"""Quantile portfolio analytics including turnover and long-short legs."""
+﻿"""分位组合分析：含换手与多空腿。"""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import pandas as pd
 
 
 def assign_quantiles(df: pd.DataFrame, factor_col: str, quantiles: int) -> pd.Series:
-    """Assign cross-sectional quantile labels per date."""
+    """中文说明。"""
 
     def _assign(grp: pd.DataFrame) -> pd.Series:
         if grp[factor_col].notna().sum() < quantiles:
@@ -25,7 +25,7 @@ def quantile_returns(
     ret_col: str,
     quantiles: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Return daily quantile returns, cumulative NAV, and quantile turnover."""
+    """中文说明。"""
     tmp = df[["date", "asset", factor_col, ret_col]].copy()
     tmp["quantile"] = assign_quantiles(tmp, factor_col, quantiles)
 

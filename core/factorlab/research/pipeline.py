@@ -148,7 +148,7 @@ class FactorResearchPipeline:
                 fac_asset_dir.mkdir(parents=True, exist_ok=True)
                 fac_table_dir.mkdir(parents=True, exist_ok=True)
 
-                # 多持有期 IC / RankIC
+                # 多持有期信息系数与秩信息系数
                 horizon_rows = []
                 daily_ic_primary: pd.DataFrame | None = None
                 for h in self.config.horizons:
@@ -173,7 +173,7 @@ class FactorResearchPipeline:
                 if not horizon_rows or daily_ic_primary is None:
                     continue
 
-                # IC 衰减表与图
+                # 信息系数衰减表与图
                 decay_df = build_ic_decay(horizon_rows)
                 decay_csv = fac_table_dir / "ic_decay.csv"
                 decay_df.to_csv(decay_csv, index=False)
@@ -208,7 +208,10 @@ class FactorResearchPipeline:
                 q_turn.to_csv(q_turn_csv, index=False)
                 fac_table_paths.extend([q_daily_csv, q_nav_csv, q_turn_csv])
 
-                q_profile = summarize_quantile_profile(q_daily, annualization_days=252)
+                q_profile = summarize_quantile_profile(
+                    q_daily,
+                    annualization_days=int(self.config.annualization_days),
+                )
                 q_profile_csv = fac_table_dir / "quantile_profile.csv"
                 q_profile.to_csv(q_profile_csv, index=False)
                 fac_table_paths.append(q_profile_csv)
@@ -216,7 +219,11 @@ class FactorResearchPipeline:
                 mono_stats = summarize_quantile_monotonicity(q_daily)
                 ls_series = q_daily.set_index("date")["long_short"]
                 market_series = tmpq.groupby("date")[primary_ret_col].mean().sort_index()
-                ls_reg = compute_long_short_alpha_beta(ls_series, market_series, annualization_days=252)
+                ls_reg = compute_long_short_alpha_beta(
+                    ls_series,
+                    market_series,
+                    annualization_days=int(self.config.annualization_days),
+                )
                 rank_ac = compute_factor_rank_autocorr(
                     panel[["date", "asset", col]].rename(columns={col: "factor"}),
                     factor_col="factor",
@@ -235,7 +242,7 @@ class FactorResearchPipeline:
                 pd.DataFrame([ls_diagnostics]).to_csv(ls_diag_csv, index=False)
                 fac_table_paths.append(ls_diag_csv)
 
-                # 截面回归诊断（Fama-MacBeth）
+                # 截面回归诊断（双阶段法）
                 reg_cols = ["date", "asset", col, primary_ret_col]
                 if "mkt_cap" in panel.columns:
                     reg_cols.append("mkt_cap")
@@ -332,7 +339,7 @@ class FactorResearchPipeline:
                 top_industry = ind_summary.iloc[0].to_dict() if not ind_summary.empty else {}
                 top_style = style_summary.iloc[0].to_dict() if not style_summary.empty else {}
 
-                # 多空日收益 Newey-West 显著性
+                # 多空日收益稳健显著性检验
                 nw_t_ls, nw_p_ls = newey_west_tstat(q_daily["long_short"])
                 ls_profile_row = q_profile[q_profile["bucket"] == "long_short"]
                 ls_profile = ls_profile_row.iloc[0].to_dict() if not ls_profile_row.empty else {}
@@ -454,6 +461,7 @@ class FactorResearchPipeline:
                 {
                     "horizons": self.config.horizons,
                     "quantiles": self.config.quantiles,
+                    "annualization_days": self.config.annualization_days,
                     "standardization": self.config.standardization,
                     "winsorize_enabled": self.config.winsorize_enabled,
                     "winsorize_method": self.config.winsorize_method,

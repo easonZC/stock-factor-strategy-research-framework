@@ -1,4 +1,4 @@
-"""Tests for config composition and dotted overrides."""
+"""模块说明。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""数据接入、合成生成与交易宇宙过滤工具。"""
+"""模块说明。"""
 
 from .adapters import prepare_sina_panel, prepare_stooq_panel
 from .factory import (

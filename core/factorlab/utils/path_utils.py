@@ -1,4 +1,4 @@
-"""路径与名称安全工具。"""
+"""模块说明。"""
 
 from __future__ import annotations
 

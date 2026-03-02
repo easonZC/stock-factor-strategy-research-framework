@@ -1,4 +1,4 @@
-"""Tests for warning governance helpers."""
+"""模块说明。"""
 
 from __future__ import annotations
 

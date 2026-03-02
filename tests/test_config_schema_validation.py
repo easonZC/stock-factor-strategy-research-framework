@@ -1,4 +1,4 @@
-"""Tests for config schema pre-validation."""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -44,6 +44,13 @@ def test_validate_run_config_schema_invalid_scope_raises() -> None:
     cfg = _valid_cfg()
     cfg["run"]["factor_scope"] = "invalid_scope"
     with pytest.raises(ValueError, match="run.factor_scope"):
+        validate_run_config_schema(cfg, strict=True)
+
+
+def test_validate_run_config_schema_invalid_stop_after_raises() -> None:
+    cfg = _valid_cfg()
+    cfg["run"]["stop_after"] = "data"
+    with pytest.raises(ValueError, match="run.stop_after"):
         validate_run_config_schema(cfg, strict=True)
 
 

@@ -1,4 +1,4 @@
-"""Walk-forward model evaluation and strategy backtest integration."""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -12,12 +12,12 @@ from factorlab.config import BacktestConfig
 from factorlab.models.registry import ModelRegistry
 from factorlab.research.forward_returns import add_forward_returns
 from factorlab.strategies.base import Strategy
-from factorlab.utils import safe_corr
+from factorlab.utils import DateFrameIndexer, safe_corr
 
 
 @dataclass(slots=True)
 class WalkForwardConfig:
-    """Configuration for rolling walk-forward model evaluation."""
+    """滚动 walk-forward 评估配置。"""
 
     feature_cols: list[str]
     label_horizon: int = 5
@@ -31,7 +31,7 @@ class WalkForwardConfig:
 
 @dataclass(slots=True)
 class WalkForwardResult:
-    """Output container for walk-forward strategy evaluation."""
+    """中文说明。"""
 
     oos_scores: pd.DataFrame
     fold_summary: pd.DataFrame
@@ -57,7 +57,7 @@ def run_walkforward_strategy(
     backtest_config: BacktestConfig,
     config: WalkForwardConfig,
 ) -> WalkForwardResult:
-    """Run leakage-safe walk-forward model training and strategy backtest."""
+    """执行无前视泄露的 walk-forward 训练与回测。"""
     required = ["date", "asset", "close", *config.feature_cols]
     missing = [c for c in required if c not in panel.columns]
     if missing:
@@ -83,6 +83,7 @@ def run_walkforward_strategy(
     df = add_forward_returns(df, horizons=[config.label_horizon], price_col="close")
     label_col = f"fwd_ret_{config.label_horizon}"
     unique_dates = sorted(df["date"].dropna().unique())
+    indexer = DateFrameIndexer(df=df, date_col="date")
 
     fold_rows: list[dict[str, float | int | str]] = []
     oos_score_parts: list[pd.DataFrame] = []
@@ -99,11 +100,11 @@ def run_walkforward_strategy(
             i += config.step_days
             continue
 
-        train_dates = set(unique_dates[train_start:train_end])
-        test_dates = set(unique_dates[test_start:test_end])
+        train_dates = list(unique_dates[train_start:train_end])
+        test_dates = list(unique_dates[test_start:test_end])
 
-        train = df[df["date"].isin(train_dates)].copy()
-        test = df[df["date"].isin(test_dates)].copy()
+        train = indexer.select(train_dates)
+        test = indexer.select(test_dates)
 
         train = train.dropna(subset=[*config.feature_cols, label_col])
         test = test.dropna(subset=config.feature_cols)

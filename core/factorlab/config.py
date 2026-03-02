@@ -1,4 +1,4 @@
-"""Dataclass-based configuration objects for framework modules."""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ PreprocessStep = Literal["winsorize", "standardize", "neutralize"]
 
 @dataclass(slots=True)
 class CostConfig:
-    """Transaction-cost assumptions in basis points."""
+    """交易成本假设（单位：bp）。"""
 
     commission_bps: float = 1.0
     slippage_bps: float = 1.0
@@ -25,10 +25,9 @@ class CostConfig:
 
 @dataclass(slots=True)
 class BacktestConfig:
-    """Backtest engine parameters.
+    """回测引擎参数。
 
-    `long_short_leverage` is interpreted as target gross exposure after
-    cross-sectional normalization on each date.
+    `long_short_leverage` 表示在逐日截面归一化后目标总敞口。
     """
 
     cost: CostConfig = field(default_factory=CostConfig)
@@ -45,7 +44,7 @@ class BacktestConfig:
     max_participation_rate: float | None = None
     benchmark_mode: BenchmarkMode = "none"
     benchmark_return_col: str = "benchmark_ret"
-    # Risk constraints
+    # 风险约束
     max_turnover: float | None = None
     max_abs_weight: float | None = None
     max_gross_exposure: float | None = None
@@ -56,7 +55,7 @@ class BacktestConfig:
 
 @dataclass(slots=True)
 class UniverseFilterConfig:
-    """Tradable-universe filters applied on panel rows."""
+    """可交易股票池过滤配置。"""
 
     min_close: float = 0.0
     min_history_days: int = 1
@@ -66,7 +65,7 @@ class UniverseFilterConfig:
 
 @dataclass(slots=True)
 class NeutralizationConfig:
-    """Cross-sectional neutralization settings."""
+    """截面中性化配置。"""
 
     mode: NeutralizationMode = "both"
     size_col: str = "mkt_cap"
@@ -75,11 +74,12 @@ class NeutralizationConfig:
 
 @dataclass(slots=True)
 class ResearchConfig:
-    """Factor research pipeline settings."""
+    """因子研究流水线配置。"""
 
     horizons: list[int] = field(default_factory=lambda: [1, 5, 10, 20])
     quantiles: int = 5
     ic_rolling_window: int = 20
+    annualization_days: int = 252
     standardization: CSStandardizeMode = "cs_zscore"
     winsorize_enabled: bool = True
     winsorize_method: Literal["quantile", "mad"] = "quantile"
@@ -95,7 +95,7 @@ class ResearchConfig:
 
 @dataclass(slots=True)
 class SyntheticConfig:
-    """Synthetic panel generator settings."""
+    """合成面板数据生成配置。"""
 
     n_assets: int = 40
     n_days: int = 260
@@ -105,7 +105,7 @@ class SyntheticConfig:
 
 @dataclass(slots=True)
 class AdapterConfig:
-    """Adapter settings for external data ingestion."""
+    """外部数据适配器配置。"""
 
     data_dir: str = ""
     required_cols: tuple[str, ...] = ("date", "close")

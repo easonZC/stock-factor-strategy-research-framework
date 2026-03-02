@@ -1,4 +1,4 @@
-"""输出目录留存管理（按时间与数量清理历史产物）。"""
+"""模块说明。"""
 
 from __future__ import annotations
 

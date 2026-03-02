@@ -1,4 +1,4 @@
-"""Small statistical helpers with warning-safe defaults."""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ def safe_corr(
     method: str = "pearson",
     min_obs: int = 3,
 ) -> float:
-    """Compute correlation safely, returning NaN on degenerate inputs."""
+    """中文说明。"""
     a = pd.to_numeric(pd.Series(left), errors="coerce")
     b = pd.to_numeric(pd.Series(right), errors="coerce")
     mask = a.notna() & b.notna()

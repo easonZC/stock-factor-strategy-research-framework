@@ -1,4 +1,4 @@
-﻿"""Chart utilities used by the HTML report generator."""
+﻿"""网页报告生成所用图表工具。"""
 
 from __future__ import annotations
 

@@ -30,6 +30,7 @@ research:
   horizons: [1, 5, 10, 20]
   quantiles: 5
   ic_rolling_window: 20
+  annualization_days: 252
   missing_policy: drop
   preprocess_steps: [winsorize, standardize, neutralize]
   transform_auto_discover: false

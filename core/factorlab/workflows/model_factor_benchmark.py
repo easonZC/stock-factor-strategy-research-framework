@@ -1,4 +1,4 @@
-"""Reusable workflow service for multi-model OOF factor benchmarking."""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -49,9 +49,9 @@ MODEL_ALIASES = {
 
 @dataclass(slots=True)
 class ModelFactorBenchmarkConfig:
-    """Config for model-factor OOF benchmark workflow."""
+    """中文说明。"""
 
-    # Accept list or comma-separated string for friendlier API usage.
+    # 同时支持列表与逗号分隔字符串，便于编程接口与命令行混合调用。
     models: list[str] | str | None = field(default_factory=lambda: list(DEFAULT_MODELS))
     factor_prefix: str = "model_factor_oof"
     feature_cols: list[str] | str | None = field(default_factory=lambda: list(DEFAULT_FEATURE_COLS))
@@ -98,7 +98,7 @@ class ModelFactorBenchmarkConfig:
 
 @dataclass(slots=True)
 class ModelFactorBenchmarkResult:
-    """Output artifact pointers for one benchmark run."""
+    """中文说明。"""
 
     out_dir: Path
     index_html: Path
@@ -346,7 +346,7 @@ def run_model_factor_benchmark(
     config: ModelFactorBenchmarkConfig,
     repo_root: str | Path | None = None,
 ) -> ModelFactorBenchmarkResult:
-    """Run end-to-end multi-model factor benchmark and produce comparison table."""
+    """中文说明。"""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     timings: dict[str, float] = {}

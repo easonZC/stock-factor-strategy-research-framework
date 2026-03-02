@@ -1,4 +1,4 @@
-"""Tests for OOF split validation and guardrails."""
+"""模块说明。"""
 
 from __future__ import annotations
 

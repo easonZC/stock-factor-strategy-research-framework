@@ -1,4 +1,4 @@
-﻿"""Pytest bootstrap for package imports."""
+﻿"""测试框架导入引导。"""
 
 from __future__ import annotations
 

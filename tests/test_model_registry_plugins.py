@@ -1,4 +1,4 @@
-"""模型注册中心插件化测试。"""
+"""模块说明。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Synthetic panel generation for clean-machine demos and tests."""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from factorlab.config import SyntheticConfig
 
 
 def generate_synthetic_panel(config: SyntheticConfig) -> pd.DataFrame:
-    """Generate a leakage-safe synthetic OHLCV panel with size/industry fields."""
+    """中文说明。"""
     rng = np.random.default_rng(int(config.seed))
     dates = pd.bdate_range(config.start_date, periods=int(config.n_days))
     assets = [f"A{i:04d}" for i in range(int(config.n_assets))]

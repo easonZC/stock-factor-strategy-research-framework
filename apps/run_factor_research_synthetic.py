@@ -1,4 +1,4 @@
-"""Synthetic end-to-end factor research entrypoint."""
+"""模块说明。"""
 
 from __future__ import annotations
 

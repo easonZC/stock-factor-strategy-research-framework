@@ -1,4 +1,4 @@
-"""配置驱动 TS/CS 因子研究统一入口。"""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ def parse_args() -> argparse.Namespace:
             "  python apps/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/research/factor/cs\n"
             "  python apps/run_from_config.py --config base.yaml --config local.yaml --set research.horizons='[1,5,10]' --out outputs/research/factor/merged\n"
             "  python apps/run_from_config.py --config configs/cs_factor_demo.yaml --set research.horizons+=20 --set research.horizons-=1 --out outputs/research/factor/cs_horizon_ops\n"
+            "  python apps/run_from_config.py --config configs/cs_factor_demo.yaml --set run.stop_after=research --out outputs/research/factor/cs_no_backtest\n"
             "  python apps/run_from_config.py --config configs/cs_factor_demo.yaml --set research.transform_auto_discover=true --set research.transform_plugin_dirs='[\"examples/plugins/transforms\"]' --set research.custom_transforms='[{\"name\":\"robust_clip\",\"kwargs\":{\"lower_q\":0.02,\"upper_q\":0.98}}]' --out outputs/research/factor/cs_custom\n"
             "  python apps/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/research/factor/cs --cleanup-old-outputs --cleanup-days 14 --cleanup-keep 30\n"
         ),

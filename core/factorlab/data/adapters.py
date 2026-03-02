@@ -1,4 +1,4 @@
-"""外部数据适配器：提供显式告警、字段映射与配置校验。"""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def _read_csv_robust(path: Path) -> pd.DataFrame:
 
 
 def prepare_sina_panel(config: AdapterConfig) -> pd.DataFrame:
-    """Sina 文件夹适配器（尽力而为，字段异常显式告警）。"""
+    """中文说明。"""
     data_dir = Path(config.data_dir)
     if not data_dir.exists() or not data_dir.is_dir():
         raise FileNotFoundError(f"Sina data-dir not found or not a directory: {data_dir}")

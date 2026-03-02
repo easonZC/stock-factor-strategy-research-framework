@@ -1,4 +1,4 @@
-"""数据适配器插件发现与配置集成测试。"""
+"""模块说明。"""
 
 from __future__ import annotations
 

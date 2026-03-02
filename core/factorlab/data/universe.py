@@ -1,4 +1,4 @@
-"""Tradable-universe filtering utilities."""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from factorlab.config import UniverseFilterConfig
 
 @dataclass(slots=True)
 class UniverseFilterReport:
-    """Summary of universe-filter effects."""
+    """中文说明。"""
 
     rows_before: int
     rows_after: int
@@ -27,7 +27,7 @@ def apply_universe_filter(
     panel: pd.DataFrame,
     config: UniverseFilterConfig,
 ) -> tuple[pd.DataFrame, UniverseFilterReport]:
-    """Apply conservative tradability filters without future information."""
+    """中文说明。"""
     df = panel.copy()
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df = df.dropna(subset=["date"]).sort_values(["asset", "date"]).reset_index(drop=True)

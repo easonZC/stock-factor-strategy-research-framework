@@ -1,4 +1,4 @@
-﻿"""Adapter behavior tests for Sina CSV ingestion."""
+﻿"""新浪数据适配器行为测试。"""
 
 from __future__ import annotations
 

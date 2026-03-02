@@ -1,4 +1,4 @@
-"""配置驱动 TS/CS 一键运行冒烟测试。"""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -165,6 +165,64 @@ def test_run_from_config_warn_skip_factor_and_flexible_preprocess(tmp_path) -> N
     assert meta["factors"]["requested"] == ["momentum_20", "not_exists_factor"]
     assert meta["factors"]["effective"] == ["momentum_20"]
     assert meta["factors"]["on_missing"] == "warn_skip"
+
+
+def test_run_from_config_stop_after_factor_stage(tmp_path) -> None:
+    cfg = {
+        "run": {
+            "factor_scope": "cs",
+            "eval_axis": "cross_section",
+            "standardization": "cs_zscore",
+            "stop_after": "factor",
+        },
+        "data": {
+            "mode": "panel",
+            "adapter": "synthetic",
+            "fields_required": ["date", "asset", "close", "volume", "mkt_cap", "industry"],
+            "synthetic": {"n_assets": 8, "n_days": 140, "seed": 77, "start_date": "2020-01-01"},
+        },
+        "factor": {"names": ["momentum_20", "volatility_20"]},
+        "research": {"horizons": [1, 5], "quantiles": 5, "ic_rolling_window": 20},
+        "backtest": {"enabled": True, "strategy": {"mode": "longshort"}},
+    }
+    out_dir = tmp_path / "out_stop_factor"
+    res = run_from_config(cfg, out_dir=out_dir)
+    assert res.index_html.exists()
+    assert res.summary_csv.exists()
+    assert res.backtest_summary_csv is None
+
+    meta = json.loads(res.run_meta_json.read_text(encoding="utf-8"))
+    assert meta["config_governance"]["stop_after"] == "factor"
+    assert "factor_stage_panel" in meta["outputs"]
+    assert Path(meta["outputs"]["factor_stage_panel"]).exists()
+
+
+def test_run_from_config_stop_after_research_stage(tmp_path) -> None:
+    cfg = {
+        "run": {
+            "factor_scope": "cs",
+            "eval_axis": "cross_section",
+            "standardization": "cs_zscore",
+            "stop_after": "research",
+        },
+        "data": {
+            "mode": "panel",
+            "adapter": "synthetic",
+            "fields_required": ["date", "asset", "close", "volume", "mkt_cap", "industry"],
+            "synthetic": {"n_assets": 8, "n_days": 160, "seed": 88, "start_date": "2020-01-01"},
+        },
+        "factor": {"names": ["momentum_20"]},
+        "research": {"horizons": [1, 5], "quantiles": 5, "ic_rolling_window": 20},
+        "backtest": {"enabled": True, "strategy": {"mode": "longshort"}},
+    }
+    out_dir = tmp_path / "out_stop_research"
+    res = run_from_config(cfg, out_dir=out_dir)
+    assert res.index_html.exists()
+    assert res.summary_csv.exists()
+    assert res.backtest_summary_csv is None
+    meta = json.loads(res.run_meta_json.read_text(encoding="utf-8"))
+    assert meta["config_governance"]["stop_after"] == "research"
+    assert meta["backtest"]["summary_csv"] is None
 
 
 def test_run_from_config_cs_meanvar_and_regression_outputs(tmp_path) -> None:
@@ -376,7 +434,7 @@ def test_run_from_config_sanitizes_factor_output_paths(tmp_path) -> None:
     out_dir = tmp_path / "out_path_safe"
     result = run_from_config(config=cfg, out_dir=out_dir)
     assert result.index_html.exists()
-    # 若目录拼接存在路径穿越，会在 out_dir 外生成目录；这里确保不会发生。
+    # 若目录拼接存在路径穿越，会在输出目录之外生成目录；这里确保不会发生。
     assert not (tmp_path / "evil_factor").exists()
 
 

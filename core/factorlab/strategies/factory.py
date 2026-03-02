@@ -1,4 +1,4 @@
-"""Strategy factory and plugin registration helpers."""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ StrategyCtor = Callable[[], Strategy]
 
 
 def default_strategy_registry() -> dict[str, StrategyCtor]:
-    """Built-in strategy constructors."""
+    """中文说明。"""
     return {
         "topk": lambda: TopKLongStrategy(name="topk_long", top_k=20),
         "longshort": lambda: LongShortQuantileStrategy(name="long_short_quantile", quantile=0.2),
@@ -141,7 +141,7 @@ def _merge_registry(
 
 
 def discover_strategy_registry(plugin_dirs: list[str | Path], on_error: str = "raise") -> dict[str, StrategyCtor]:
-    """Discover strategy classes from python files under configured plugin directories."""
+    """中文说明。"""
     reg: dict[str, StrategyCtor] = {}
     for raw_dir in plugin_dirs:
         path = Path(raw_dir).expanduser()
@@ -170,7 +170,7 @@ def discover_strategy_registry(plugin_dirs: list[str | Path], on_error: str = "r
 
 
 def load_strategy_plugins(plugin_specs: list[Any], on_error: str = "raise") -> dict[str, StrategyCtor]:
-    """Load strategy plugins by module/class specifications."""
+    """中文说明。"""
     reg: dict[str, StrategyCtor] = {}
     for entry in plugin_specs:
         try:
@@ -236,7 +236,7 @@ def build_strategy_registry(
     on_plugin_error: str = "raise",
     include_defaults: bool = True,
 ) -> dict[str, StrategyCtor]:
-    """Build strategy registry from built-ins plus optional plugin discovery/loading."""
+    """中文说明。"""
     registry = default_strategy_registry() if include_defaults else {}
     if plugin_dirs:
         registry = _merge_registry(

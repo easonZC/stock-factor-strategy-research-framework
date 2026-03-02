@@ -1,4 +1,4 @@
-"""Tests for factor expression composer."""
+"""模块说明。"""
 
 from __future__ import annotations
 

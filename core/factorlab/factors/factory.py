@@ -1,4 +1,4 @@
-﻿"""Factor factory and registration helpers."""
+﻿"""因子工厂与注册辅助。"""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ FactorCtor = Callable[[], Factor]
 
 
 def default_factor_registry() -> dict[str, FactorCtor]:
-    """Built-in factor constructors."""
+    """中文说明。"""
     return {
         "momentum_20": lambda: MomentumFactor(name="momentum_20", lookback=20),
         "volatility_20": lambda: VolatilityFactor(name="volatility_20", window=20),
@@ -89,7 +89,7 @@ def _build_ctor(cls: type[Factor], factor_name: str, init_kwargs: dict[str, Any]
             raise TypeError(f"Expected Factor instance from {cls}, got {type(fac)}")
         return fac
 
-    # Fail early on bad constructor args.
+    # 构造参数异常时提前失败，避免运行时再暴露。
     _ctor()
     return _ctor
 
@@ -139,7 +139,7 @@ def _merge_registry(
 
 
 def discover_factor_registry(plugin_dirs: list[str | Path], on_error: str = "raise") -> dict[str, FactorCtor]:
-    """Discover factor classes from python files under configured plugin directories."""
+    """中文说明。"""
     reg: dict[str, FactorCtor] = {}
     for raw_dir in plugin_dirs:
         path = Path(raw_dir).expanduser()
@@ -168,10 +168,10 @@ def discover_factor_registry(plugin_dirs: list[str | Path], on_error: str = "rai
 
 
 def load_factor_plugins(plugin_specs: list[Any], on_error: str = "raise") -> dict[str, FactorCtor]:
-    """Load factor plugins by module/class specifications.
+    """按模块/类规范加载因子插件。
 
-    Supported entry forms:
-    - `"pkg.module"` or `"/abs/or/rel/path/plugin.py"`
+    支持输入形式：
+    - `"pkg.module"` 或 `"/abs/or/rel/path/plugin.py"`
     - `{"module": "pkg.module", "class": "MyFactor", "name": "my_factor", "init": {...}}`
     - `{"class_path": "pkg.module:MyFactor", "name": "my_factor", "init": {...}}`
     """
@@ -240,7 +240,7 @@ def build_factor_registry(
     plugin_specs: list[Any] | None = None,
     on_plugin_error: str = "raise",
 ) -> dict[str, FactorCtor]:
-    """Build factor registry from built-ins plus optional plugin discovery/loading."""
+    """中文说明。"""
     registry = default_factor_registry()
     if plugin_dirs:
         registry = _merge_registry(
@@ -265,13 +265,13 @@ def apply_factors(
     inplace: bool = True,
     registry: dict[str, FactorCtor] | None = None,
 ) -> pd.DataFrame:
-    """Compute configured factor names and append columns to panel.
+    """计算指定因子并追加到面板数据。
 
-    Args:
-        panel: Input panel dataframe.
-        factor_names: Factor names to compute.
-        inplace: If True, mutate input dataframe to avoid large memory copies.
-        registry: Optional factor registry. If omitted, use built-in registry.
+    参数：
+    - panel: 输入面板。
+    - factor_names: 需要计算的因子名称列表。
+    - inplace: 为 True 时原地写入，减少大表拷贝。
+    - registry: 可选因子注册表；为空时使用内置注册表。
     """
     out = panel if inplace else panel.copy()
     reg = registry or default_factor_registry()

@@ -1,4 +1,4 @@
-"""Panel IO and sanitization helpers."""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ DuplicatePolicy = Literal["last", "first", "raise"]
 
 @dataclass(slots=True)
 class PanelSanitizationConfig:
-    """Controls panel sanitization behavior for file inputs."""
+    """中文说明。"""
 
     duplicate_policy: DuplicatePolicy = "last"
     sort_values: bool = True
@@ -22,7 +22,7 @@ class PanelSanitizationConfig:
 
 @dataclass(slots=True)
 class PanelSanitizationReport:
-    """Summary of sanitization effects."""
+    """中文说明。"""
 
     original_rows: int
     rows_after_sanitization: int
@@ -111,7 +111,7 @@ def read_panel(
     sanitization_config: PanelSanitizationConfig | None = None,
     return_report: bool = False,
 ) -> pd.DataFrame | tuple[pd.DataFrame, PanelSanitizationReport]:
-    """Read panel from parquet/csv with optional sanitization."""
+    """中文说明。"""
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"Panel file not found: {p}")
@@ -150,7 +150,7 @@ def read_panel(
 
 
 def write_panel(panel: pd.DataFrame, path: str | Path) -> Path:
-    """Write panel to parquet/csv inferred by extension."""
+    """中文说明。"""
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     if p.suffix.lower() == ".parquet":
