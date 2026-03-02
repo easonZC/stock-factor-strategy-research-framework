@@ -17,6 +17,7 @@ data:
 
 factor:
   names: [momentum_20, volatility_20]
+  on_missing: raise
 
 research:
   horizons: [1, 5, 10, 20]

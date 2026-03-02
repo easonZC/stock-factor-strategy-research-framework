@@ -102,3 +102,46 @@ def test_run_from_config_ts_smoke(tmp_path) -> None:
     meta = json.loads(result.run_meta_json.read_text(encoding="utf-8"))
     assert meta["scope"]["factor_scope"] == "ts"
     assert meta["scope"]["eval_axis"] == "time"
+
+
+def test_run_from_config_warn_skip_factor_and_flexible_preprocess(tmp_path) -> None:
+    cfg = {
+        "run": {
+            "factor_scope": "cs",
+            "eval_axis": "cross_section",
+            "standardization": "cs_robust_zscore",
+        },
+        "data": {
+            "mode": "panel",
+            "adapter": "synthetic",
+            "fields_required": ["date", "asset", "close", "volume", "mkt_cap", "industry"],
+            "synthetic": {
+                "n_assets": 10,
+                "n_days": 180,
+                "seed": 101,
+                "start_date": "2021-01-01",
+            },
+        },
+        "factor": {"names": ["momentum_20", "not_exists_factor"], "on_missing": "warn_skip"},
+        "research": {
+            "horizons": [1, 5],
+            "quantiles": 5,
+            "ic_rolling_window": 20,
+            "missing_policy": "fill_zero",
+            "preprocess_steps": ["standardize"],
+            "neutralize": {"enabled": False},
+        },
+        "backtest": {"enabled": False},
+    }
+    cfg_path = tmp_path / "flex.yaml"
+    _write_yaml(cfg_path, cfg)
+
+    out_dir = tmp_path / "out_flex"
+    result = run_from_config(config=cfg_path, out_dir=out_dir)
+    assert result.index_html.exists()
+    assert result.summary_csv.exists()
+
+    meta = json.loads(result.run_meta_json.read_text(encoding="utf-8"))
+    assert meta["factors"]["requested"] == ["momentum_20", "not_exists_factor"]
+    assert meta["factors"]["effective"] == ["momentum_20"]
+    assert meta["factors"]["on_missing"] == "warn_skip"

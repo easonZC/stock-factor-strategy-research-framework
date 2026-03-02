@@ -40,6 +40,13 @@ LOGGER = get_logger("factorlab.workflows.config_runner")
 FactorScope = Literal["ts", "cs"]
 EvalAxis = Literal["time", "cross_section"]
 
+FACTOR_REQUIRED_COLUMNS: dict[str, set[str]] = {
+    "momentum_20": {"close"},
+    "volatility_20": {"close"},
+    "liquidity_shock": {"volume"},
+    "size": {"mkt_cap"},
+}
+
 
 @dataclass(slots=True)
 class ConfigRunResult:
@@ -119,7 +126,7 @@ def _normalize_factor_scope(cfg: dict[str, Any]) -> dict[str, Any]:
         allowed_std = {"ts_rolling_zscore", "zscore", "none"}
     else:
         default_std = "cs_zscore"
-        allowed_std = {"cs_zscore", "cs_rank", "none"}
+        allowed_std = {"cs_zscore", "cs_rank", "cs_robust_zscore", "none"}
     standardization = str(run_cfg.get("standardization", default_std)).strip().lower()
     if standardization not in allowed_std:
         LOGGER.warning(
@@ -173,7 +180,11 @@ def _normalize_factor_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     names = [str(x).strip() for x in _as_list(fac_cfg.get("names")) if str(x).strip()]
     if not names:
         names = ["momentum_20"]
-    return {"names": names}
+    on_missing = str(fac_cfg.get("on_missing", "raise")).strip().lower()
+    if on_missing not in {"raise", "warn_skip"}:
+        LOGGER.warning("Invalid factor.on_missing='%s'. Use 'raise'.", on_missing)
+        on_missing = "raise"
+    return {"names": names, "on_missing": on_missing}
 
 
 def _normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str, Any]:
@@ -189,12 +200,37 @@ def _normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str
     if not horizons:
         horizons = [1, 5, 10, 20]
 
+    missing_policy = str(raw.get("missing_policy", "drop")).strip().lower()
+    allowed_missing = {"drop", "fill_zero", "ffill_by_asset", "cs_median_by_date", "keep"}
+    if missing_policy not in allowed_missing:
+        LOGGER.warning("Invalid research.missing_policy='%s'. Use 'drop'.", missing_policy)
+        missing_policy = "drop"
+
+    default_steps = ["winsorize", "standardize", "neutralize"] if scope == "cs" else []
+    steps_raw = [
+        str(x).strip().lower()
+        for x in _as_list(raw.get("preprocess_steps", default_steps))
+        if str(x).strip()
+    ]
+    allowed_steps = {"winsorize", "standardize", "neutralize"}
+    preprocess_steps: list[str] = []
+    for step in steps_raw:
+        if step not in allowed_steps:
+            LOGGER.warning("Ignore unsupported preprocess step: %s", step)
+            continue
+        if step not in preprocess_steps:
+            preprocess_steps.append(step)
+    if scope == "cs" and not preprocess_steps:
+        preprocess_steps = default_steps.copy()
+
     out = {
         "horizons": horizons,
         "quantiles": max(2, _to_int(raw.get("quantiles"), 5)),
         "ic_rolling_window": max(5, _to_int(raw.get("ic_rolling_window"), 20)),
         "ts_standardize_window": max(5, _to_int(raw.get("ts_standardize_window"), 60)),
         "ts_quantile_lookback": max(10, _to_int(raw.get("ts_quantile_lookback"), 60)),
+        "missing_policy": missing_policy,
+        "preprocess_steps": preprocess_steps,
     }
     if scope == "cs":
         out["winsorize"] = _as_dict(raw.get("winsorize"))
@@ -345,7 +381,9 @@ def _resolve_required_fields(
 
     if scope_cfg["factor_scope"] == "cs":
         neutral = _as_dict(research_cfg.get("neutralize"))
-        if _to_bool(neutral.get("enabled"), True):
+        steps = {str(x).strip().lower() for x in _as_list(research_cfg.get("preprocess_steps")) if str(x).strip()}
+        neutralize_in_pipeline = ("neutralize" in steps) if steps else True
+        if _to_bool(neutral.get("enabled"), True) and neutralize_in_pipeline:
             mode = str(neutral.get("mode", "both")).strip().lower()
             if mode in {"size", "both"}:
                 required.add("mkt_cap")
@@ -354,13 +392,45 @@ def _resolve_required_fields(
     return sorted(required)
 
 
+def _filter_factors_by_available_columns(
+    panel: pd.DataFrame,
+    factor_names: list[str],
+    on_missing: str,
+) -> tuple[list[str], list[str]]:
+    if on_missing != "warn_skip":
+        return factor_names, []
+
+    selected: list[str] = []
+    skipped: list[str] = []
+    cols = set(panel.columns)
+    for name in factor_names:
+        required = FACTOR_REQUIRED_COLUMNS.get(name, set())
+        missing = sorted(required - cols)
+        if missing:
+            LOGGER.warning(
+                "Skip factor '%s': required input columns missing=%s and factor.on_missing=warn_skip",
+                name,
+                missing,
+            )
+            skipped.append(name)
+            continue
+        selected.append(name)
+    if not selected:
+        raise RuntimeError("No valid factors available after checking required columns.")
+    return selected, skipped
+
+
 def _validate_required_fields(panel: pd.DataFrame, required: list[str]) -> None:
     missing = [c for c in required if c not in panel.columns]
     if missing:
         raise KeyError(f"Data missing required fields: {missing}")
 
 
-def _compute_factors(panel: pd.DataFrame, factor_names: list[str]) -> tuple[pd.DataFrame, list[str]]:
+def _compute_factors(
+    panel: pd.DataFrame,
+    factor_names: list[str],
+    on_missing: str,
+) -> tuple[pd.DataFrame, list[str], list[str]]:
     out = panel.copy()
     registry = default_factor_registry()
     missing = [f for f in factor_names if f not in out.columns]
@@ -369,8 +439,14 @@ def _compute_factors(panel: pd.DataFrame, factor_names: list[str]) -> tuple[pd.D
         out = apply_factors(out, computable, inplace=True)
     unresolved = [f for f in factor_names if f not in out.columns]
     if unresolved:
-        raise KeyError(f"Factors missing and not computable: {unresolved}")
-    return out, computable
+        if on_missing == "warn_skip":
+            LOGGER.warning("Skip unresolved factors due to factor.on_missing=warn_skip: %s", unresolved)
+        else:
+            raise KeyError(f"Factors missing and not computable: {unresolved}")
+    selected = [f for f in factor_names if f not in unresolved]
+    if not selected:
+        raise RuntimeError("No valid factors available after resolving factor names.")
+    return out, computable, selected
 
 
 def _build_strategy(back_cfg: dict[str, Any]) -> Strategy:
@@ -486,14 +562,24 @@ def run_from_config(
 
     panel, load_report = _load_data(data_cfg, scope_cfg)
     panel, mode_report = _ensure_mode_shape(panel, data_cfg=data_cfg)
+    requested_factors = list(fac_cfg["names"])
+    candidate_factors, precheck_skipped_factors = _filter_factors_by_available_columns(
+        panel=panel,
+        factor_names=requested_factors,
+        on_missing=fac_cfg["on_missing"],
+    )
     required_fields = _resolve_required_fields(
         scope_cfg=scope_cfg,
         data_cfg=data_cfg,
-        factor_names=fac_cfg["names"],
+        factor_names=candidate_factors,
         research_cfg=research_cfg,
     )
     _validate_required_fields(panel, required=required_fields)
-    panel, computed_factors = _compute_factors(panel, factor_names=fac_cfg["names"])
+    panel, computed_factors, effective_factors = _compute_factors(
+        panel,
+        factor_names=candidate_factors,
+        on_missing=fac_cfg["on_missing"],
+    )
 
     universe_report = None
     if scope_cfg["factor_scope"] == "cs" and universe_cfg["enabled"]:
@@ -521,9 +607,11 @@ def run_from_config(
             lower_q=_to_float(wins.get("lower_q"), 0.01),
             upper_q=_to_float(wins.get("upper_q"), 0.99),
             mad_scale=max(1.0, _to_float(wins.get("mad_scale"), 5.0)),
+            missing_policy=str(research_cfg.get("missing_policy", "drop")),
+            preprocess_steps=research_cfg.get("preprocess_steps") or ["winsorize", "standardize", "neutralize"],
             neutralization=NeutralizationConfig(mode=neutral_mode),  # type: ignore[arg-type]
         )
-        outputs = FactorResearchPipeline(cs_cfg).run(panel=panel, factors=fac_cfg["names"], out_dir=out)
+        outputs = FactorResearchPipeline(cs_cfg).run(panel=panel, factors=effective_factors, out_dir=out)
     else:
         ts_cfg = TSResearchConfig(
             horizons=research_cfg["horizons"],
@@ -533,11 +621,11 @@ def run_from_config(
             ts_standardize_window=int(research_cfg["ts_standardize_window"]),
             ts_quantile_lookback=int(research_cfg["ts_quantile_lookback"]),
         )
-        outputs = TimeSeriesFactorResearchPipeline(ts_cfg).run(panel=panel, factors=fac_cfg["names"], out_dir=out)
+        outputs = TimeSeriesFactorResearchPipeline(ts_cfg).run(panel=panel, factors=effective_factors, out_dir=out)
 
     backtest_summary_csv = _run_optional_backtest(
         panel=panel,
-        factors=fac_cfg["names"],
+        factors=effective_factors,
         scope_cfg=scope_cfg,
         back_cfg=back_cfg,
         out_dir=out,
@@ -551,7 +639,14 @@ def run_from_config(
             "mode_report": mode_report,
             "required_fields": required_fields,
         },
-        "factors": {"names": fac_cfg["names"], "computed_factors": computed_factors},
+        "factors": {
+            "requested": requested_factors,
+            "candidate_after_precheck": candidate_factors,
+            "skipped_in_precheck": precheck_skipped_factors,
+            "effective": effective_factors,
+            "computed_factors": computed_factors,
+            "on_missing": fac_cfg["on_missing"],
+        },
         "research": research_cfg,
         "universe_filter": {
             "enabled": universe_cfg["enabled"],

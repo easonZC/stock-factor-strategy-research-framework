@@ -89,7 +89,12 @@ python apps/run_from_config.py --config configs/ts_factor_demo.yaml --out output
 ### Required config keys
 - `run.factor_scope`: `cs` or `ts`
 - `run.eval_axis`: `cross_section` or `time`
-- `run.standardization`: CS (`cs_zscore|cs_rank|none`), TS (`ts_rolling_zscore|zscore|none`)
+- `run.standardization`: CS (`cs_zscore|cs_rank|cs_robust_zscore|none`), TS (`ts_rolling_zscore|zscore|none`)
+
+### Flexible research knobs (recommended for exploratory research)
+- `factor.on_missing`: `raise` (strict) or `warn_skip` (skip unresolved factors with warnings)
+- `research.missing_policy`: `drop|fill_zero|ffill_by_asset|cs_median_by_date|keep`
+- `research.preprocess_steps`: ordered list from `winsorize|standardize|neutralize`
 
 ## Typical Report Output Tree
 ```text

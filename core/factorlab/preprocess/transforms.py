@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from factorlab.config import NeutralizationConfig
+from factorlab.config import CSStandardizeMode, NeutralizationConfig
 
 
 def winsorize_series_quantile(series: pd.Series, lower_q: float = 0.01, upper_q: float = 0.99) -> pd.Series:
@@ -59,6 +59,28 @@ def cs_rank(df: pd.DataFrame, col: str) -> pd.Series:
     return df.groupby("date")[col].rank(pct=True)
 
 
+def cs_robust_zscore(df: pd.DataFrame, col: str, mad_scale: float = 1.4826) -> pd.Series:
+    """Cross-sectional robust z-score per date using median/MAD."""
+    grouped = df.groupby("date")[col]
+    median = grouped.transform("median")
+    mad = grouped.transform(lambda s: (s - s.median()).abs().median())
+    denom = (mad_scale * mad).where((mad_scale * mad).abs() > 1e-12, np.nan)
+    return (df[col] - median) / denom
+
+
+def apply_cs_standardize(df: pd.DataFrame, col: str, method: CSStandardizeMode) -> pd.Series:
+    """Apply configurable cross-sectional standardization per date."""
+    if method == "none":
+        return df[col].astype(float)
+    if method == "cs_rank":
+        return cs_rank(df, col).astype(float)
+    if method == "cs_robust_zscore":
+        return cs_robust_zscore(df, col).astype(float)
+    if method == "cs_zscore":
+        return cs_zscore(df, col).astype(float)
+    raise ValueError(f"Unsupported CS standardization method: {method}")
+
+
 def ts_rolling_zscore(df: pd.DataFrame, col: str, window: int = 20) -> pd.Series:
     """Time-series rolling z-score per asset."""
     def _roll(s: pd.Series) -> pd.Series:
@@ -70,10 +92,45 @@ def ts_rolling_zscore(df: pd.DataFrame, col: str, window: int = 20) -> pd.Series
 
 
 def handle_missing(df: pd.DataFrame, cols: list[str], policy: str = "drop") -> pd.DataFrame:
-    """Handle missing values. Default is drop for research integrity."""
-    if policy != "drop":
-        raise ValueError("Only 'drop' policy is supported to avoid implicit leakage assumptions.")
-    return df.dropna(subset=cols)
+    """Handle missing values with explicit policy.
+
+    Policies:
+    - drop: drop rows with NA in `cols`.
+    - fill_zero: fill NA in `cols` with 0.
+    - ffill_by_asset: sort by (asset, date), forward-fill within each asset, then drop residual NA.
+    - cs_median_by_date: fill NA in each column by same-date cross-sectional median, then drop residual NA.
+    - keep: keep as-is.
+    """
+    out = df.copy()
+    policy_norm = str(policy).strip().lower()
+    if policy_norm == "drop":
+        return out.dropna(subset=cols)
+    if policy_norm == "fill_zero":
+        out.loc[:, cols] = out[cols].fillna(0.0)
+        return out
+    if policy_norm == "ffill_by_asset":
+        required = {"asset", "date"}
+        if not required.issubset(out.columns):
+            missing = sorted(required - set(out.columns))
+            raise KeyError(f"ffill_by_asset requires columns: {missing}")
+        order = out.index
+        tmp = out.sort_values(["asset", "date"]).copy()
+        tmp.loc[:, cols] = tmp.groupby("asset", group_keys=False)[cols].ffill()
+        tmp = tmp.reindex(order)
+        return tmp.dropna(subset=cols)
+    if policy_norm == "cs_median_by_date":
+        if "date" not in out.columns:
+            raise KeyError("cs_median_by_date requires 'date' column")
+        for col in cols:
+            med = out.groupby("date")[col].transform("median")
+            out[col] = out[col].fillna(med)
+        return out.dropna(subset=cols)
+    if policy_norm == "keep":
+        return out
+    raise ValueError(
+        "Unsupported missing policy. Use one of: drop, fill_zero, "
+        "ffill_by_asset, cs_median_by_date, keep."
+    )
 
 
 def neutralize_factor(

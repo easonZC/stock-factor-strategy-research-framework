@@ -53,6 +53,43 @@ For every complete run, append one new entry at the top of `Run History` with:
 
 ## Run History
 
+### Run 2026-03-01-007
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal: Improve research flexibility by relaxing factor/run interfaces and expanding configurable data preprocessing policies.
+- Changes:
+  - Expanded configurable CS standardization:
+    - added `cs_robust_zscore` (median/MAD-based robust z-score) to preprocessing and config typing.
+  - Expanded missing-value handling policies:
+    - `drop`, `fill_zero`, `ffill_by_asset`, `cs_median_by_date`, `keep`.
+  - Added configurable preprocess pipeline steps for CS:
+    - `research.preprocess_steps` supports ordered `winsorize|standardize|neutralize`.
+    - pipeline now executes by configured steps instead of fixed hard-coded order.
+  - Relaxed factor interface strictness for config runs:
+    - added `factor.on_missing: raise|warn_skip`.
+    - `warn_skip` now skips unresolved factors with warnings instead of aborting the full run.
+    - added precheck skip for built-in factors missing required input columns.
+  - Synced CLI/config/docs:
+    - `apps/run_factor_research.py` now exposes `--on-missing-factor`, `--missing-policy`, `--preprocess-steps`, `--standardization`.
+    - updated `configs/cs_factor_demo.yaml` and `configs/ts_factor_demo.yaml`.
+    - updated `README.md` and `docs/data_processing.md` for new flexibility knobs.
+  - Added tests for new behavior:
+    - missing policy coverage + robust zscore in `tests/test_transforms.py`.
+    - `warn_skip` and flexible preprocessing smoke in `tests/test_run_from_config.py`.
+- Validation commands:
+  - `python3 -m ruff check core apps tests`
+  - `python3 -m pytest -q`
+  - `python3 apps/run_from_config.py --config configs/cs_factor_demo.yaml --out outputs/research/factor/config_cs_flex_check`
+- Validation summary:
+  - Lint passed.
+  - Tests passed: `13 passed`.
+  - Config-driven CS run completed with report artifacts generated successfully.
+- Git actions:
+  - Local commit: pending
+  - Push: pending
+- Next run direction:
+  - Add pluggable custom transform/factor hooks (user-defined Python path entry) to further improve research freedom without modifying framework code.
+  - Add structured warning report in `run_meta.json` (skipped factors, fallback decisions, preprocessing coercions) for stronger auditability.
+
 ### Run 2026-03-01-006
 - Time: 2026-03-01 (America/Los_Angeles)
 - Goal: Improve professional naming, archive legacy factors for discoverability, and reorganize report outputs by factor hierarchy.

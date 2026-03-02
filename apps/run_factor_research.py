@@ -38,6 +38,27 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--neutralize", choices=["none", "size", "industry", "both"], default="both")
     parser.add_argument("--winsorize", choices=["quantile", "mad"], default="quantile")
+    parser.add_argument(
+        "--standardization",
+        choices=["cs_zscore", "cs_rank", "cs_robust_zscore", "none"],
+        default="cs_zscore",
+    )
+    parser.add_argument(
+        "--missing-policy",
+        choices=["drop", "fill_zero", "ffill_by_asset", "cs_median_by_date", "keep"],
+        default="drop",
+    )
+    parser.add_argument(
+        "--preprocess-steps",
+        default="winsorize,standardize,neutralize",
+        help="Comma-separated preprocess steps for CS pipeline",
+    )
+    parser.add_argument(
+        "--on-missing-factor",
+        choices=["raise", "warn_skip"],
+        default="raise",
+        help="Behavior when factor is neither in panel nor built-in registry",
+    )
     parser.add_argument("--max-assets", type=int, default=None, help="Optional cap on number of assets")
     parser.add_argument("--start-date", default=None, help="Optional start date filter (YYYY-MM-DD)")
     return parser.parse_args()
@@ -72,12 +93,23 @@ def main() -> None:
 
     unresolved = [f for f in factor_names if f not in panel.columns]
     if unresolved:
-        raise KeyError(f"Factors not found and not computable: {unresolved}")
+        if args.on_missing_factor == "warn_skip":
+            LOGGER.warning("Skip unresolved factors due to --on-missing-factor=warn_skip: %s", unresolved)
+            factor_names = [f for f in factor_names if f not in unresolved]
+        else:
+            raise KeyError(f"Factors not found and not computable: {unresolved}")
+    if not factor_names:
+        raise RuntimeError("No valid factors to run after resolving missing factors.")
+
+    preprocess_steps = [x.strip().lower() for x in str(args.preprocess_steps).split(",") if x.strip()]
 
     cfg = ResearchConfig(
         horizons=args.horizons,
         quantiles=5,
+        standardization=args.standardization,
         winsorize_method=args.winsorize,
+        missing_policy=args.missing_policy,
+        preprocess_steps=preprocess_steps,
         neutralization=NeutralizationConfig(mode=args.neutralize),
     )
     pipeline = FactorResearchPipeline(cfg)

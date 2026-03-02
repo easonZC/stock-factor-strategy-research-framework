@@ -9,21 +9,34 @@ This framework enforces conservative preprocessing defaults for factor research:
 2. Standardization
 - Cross-sectional z-score (`cs_zscore`)
 - Cross-sectional rank (`cs_rank`)
+- Cross-sectional robust z-score (`cs_robust_zscore`, median/MAD)
 - Time-series rolling z-score per asset (`ts_rolling_zscore`)
 
 3. Missing handling
 - Default policy is strict `drop` to avoid hidden assumptions.
+- Optional policies for exploratory research:
+  - `fill_zero`
+  - `ffill_by_asset` (past-only forward fill per asset)
+  - `cs_median_by_date` (same-date cross-sectional median fill)
+  - `keep` (preserve missing values for downstream handling)
 
-4. Neutralization
+4. Configurable preprocess order
+- CS pipeline supports ordered steps via `research.preprocess_steps`:
+  - `winsorize`
+  - `standardize`
+  - `neutralize`
+- This allows flexible A/B experiments without changing code.
+
+5. Neutralization
 - Supports `size`, `industry`, `both`, `none`.
 - Residualization is performed cross-sectionally per date.
 - No-lookahead guarantee: only same-date exposures are used.
 
-5. Forward returns
+6. Forward returns
 - Computed by per-asset future price shift.
 - Strategy backtest shifts weights by one day to avoid lookahead.
 
-6. TS / CS split defaults
+7. TS / CS split defaults
 - TS scope:
   - default standardization: `ts_rolling_zscore`
   - evaluation axis: `time`

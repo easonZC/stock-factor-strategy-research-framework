@@ -17,6 +17,7 @@ data:
 
 factor:
   names: [momentum_20, volatility_20, liquidity_shock, size]
+  on_missing: warn_skip
 
 universe_filter:
   enabled: false
@@ -29,6 +30,8 @@ research:
   horizons: [1, 5, 10, 20]
   quantiles: 5
   ic_rolling_window: 20
+  missing_policy: drop
+  preprocess_steps: [winsorize, standardize, neutralize]
   winsorize:
     enabled: true
     method: quantile

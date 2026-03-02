@@ -19,7 +19,7 @@ from factorlab.plotting import (
     plot_stability,
     plot_turnover,
 )
-from factorlab.preprocess import apply_winsorize, cs_rank, cs_zscore, handle_missing, neutralize_factor
+from factorlab.preprocess import apply_cs_standardize, apply_winsorize, handle_missing, neutralize_factor
 from factorlab.research.diagnostics import (
     coverage_by_date,
     factor_corr_matrix,
@@ -40,6 +40,7 @@ from factorlab.research.statistics import build_ic_decay, compute_daily_ic, newe
 from factorlab.utils import get_logger
 
 LOGGER = get_logger("factorlab.research")
+ALLOWED_PREPROCESS_STEPS = {"winsorize", "standardize", "neutralize"}
 
 
 class FactorResearchPipeline:
@@ -71,11 +72,23 @@ class FactorResearchPipeline:
 
         outlier_rows = []
 
+        raw_steps = [str(x).strip().lower() for x in self.config.preprocess_steps if str(x).strip()]
+        preprocess_steps = [s for s in raw_steps if s in ALLOWED_PREPROCESS_STEPS]
+        if not preprocess_steps:
+            preprocess_steps = ["winsorize", "standardize", "neutralize"]
+            LOGGER.warning(
+                "Invalid preprocess_steps=%s. Fallback to default %s",
+                self.config.preprocess_steps,
+                preprocess_steps,
+            )
+
         for fac in factors:
             LOGGER.info("Running factor research for: %s", fac)
-            fac_raw = panel[fac]
-            if self.config.winsorize_enabled:
-                fac_base = apply_winsorize(
+            fac_raw = panel[fac].astype(float)
+            fac_stage = fac_raw.copy()
+
+            if "winsorize" in preprocess_steps and self.config.winsorize_enabled:
+                fac_stage = apply_winsorize(
                     panel,
                     factor_col=fac,
                     method=self.config.winsorize_method,
@@ -83,29 +96,32 @@ class FactorResearchPipeline:
                     upper_q=self.config.upper_q,
                     mad_scale=self.config.mad_scale,
                 )
-            else:
-                fac_base = panel[fac].astype(float)
+            fac_outlier_after = fac_stage.copy()
 
-            if self.config.standardization == "cs_rank":
-                fac_std = cs_rank(pd.DataFrame({"date": panel["date"], fac: fac_base}), fac)
-            elif self.config.standardization == "none":
-                fac_std = fac_base
-            else:
-                fac_std = cs_zscore(pd.DataFrame({"date": panel["date"], fac: fac_base}), fac)
+            if "standardize" in preprocess_steps:
+                fac_stage = apply_cs_standardize(
+                    pd.DataFrame({"date": panel["date"], fac: fac_stage}),
+                    col=fac,
+                    method=self.config.standardization,
+                )
 
-            outlier_rows.append(outlier_monitor(fac_raw, fac_base, fac))
+            outlier_rows.append(outlier_monitor(fac_raw, fac_outlier_after, fac))
 
-            panel[f"{fac}_raw"] = fac_std
-            panel[f"{fac}_neutralized"] = neutralize_factor(
-                panel.assign(**{fac: fac_std}),
-                fac,
-                self.config.neutralization,
-            )
+            variants: dict[str, pd.Series] = {"raw": fac_stage}
+            if "neutralize" in preprocess_steps and self.config.neutralization.mode != "none":
+                variants["neutralized"] = neutralize_factor(
+                    panel.assign(**{fac: fac_stage}),
+                    fac,
+                    self.config.neutralization,
+                )
+
+            for variant_name, series in variants.items():
+                panel[f"{fac}_{variant_name}"] = series
 
             fac_table_paths: list[Path] = []
             fac_fig_paths: list[Path] = []
 
-            for variant in ["raw", "neutralized"]:
+            for variant in variants:
                 col = f"{fac}_{variant}"
                 fac_asset_dir = assets_dir / "factors" / fac / variant
                 fac_table_dir = tables_dir / "factors" / fac / variant
@@ -317,6 +333,8 @@ class FactorResearchPipeline:
                     "standardization": self.config.standardization,
                     "winsorize_enabled": self.config.winsorize_enabled,
                     "winsorize_method": self.config.winsorize_method,
+                    "missing_policy": self.config.missing_policy,
+                    "preprocess_steps": preprocess_steps,
                     "neutralization_mode": self.config.neutralization.mode,
                     "factors": factors,
                 },

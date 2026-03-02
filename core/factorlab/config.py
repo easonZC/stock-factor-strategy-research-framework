@@ -9,7 +9,9 @@ from typing import Literal
 NeutralizationMode = Literal["none", "size", "industry", "both"]
 MissingReturnPolicy = Literal["zero"]
 BenchmarkMode = Literal["none", "cross_sectional_mean", "panel_column"]
-CSStandardizeMode = Literal["cs_zscore", "cs_rank", "none"]
+CSStandardizeMode = Literal["cs_zscore", "cs_rank", "cs_robust_zscore", "none"]
+MissingFactorPolicy = Literal["drop", "fill_zero", "ffill_by_asset", "cs_median_by_date", "keep"]
+PreprocessStep = Literal["winsorize", "standardize", "neutralize"]
 
 
 @dataclass(slots=True)
@@ -77,7 +79,10 @@ class ResearchConfig:
     lower_q: float = 0.01
     upper_q: float = 0.99
     mad_scale: float = 5.0
-    missing_policy: Literal["drop"] = "drop"
+    missing_policy: MissingFactorPolicy = "drop"
+    preprocess_steps: list[PreprocessStep] = field(
+        default_factory=lambda: ["winsorize", "standardize", "neutralize"]
+    )
     neutralization: NeutralizationConfig = field(default_factory=NeutralizationConfig)
 
 
