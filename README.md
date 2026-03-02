@@ -158,6 +158,9 @@ python apps/run_from_config.py \
 - `factor.plugin_on_error`: `raise` or `warn_skip` for plugin load conflicts/errors
 - `research.missing_policy`: `drop|fill_zero|ffill_by_asset|cs_median_by_date|keep`
 - `research.preprocess_steps`: ordered list from `winsorize|standardize|neutralize`
+- `run.config_mode`: `strict|warn|compat` (strict blocks auto-corrections; warn records and continues)
+- `run.fail_on_autocorrect`: fail the run whenever normalization changed user-provided values
+- `run.leakage_guard_mode`: `strict|warn|off` to guard forbidden future/label references
 - `backtest.strategy.mode`: built-in `sign|topk|longshort|flex|meanvar` or plugin-defined mode
 - `backtest` risk controls: `max_turnover|max_abs_weight|max_gross_exposure|max_net_exposure`
 - `backtest.benchmark_mode`: `none|cross_sectional_mean|panel_column`
@@ -169,6 +172,7 @@ python apps/run_from_config.py \
   - `data.adapter_plugin_on_error`: `raise|warn_skip`
 - CLI `run_from_config` supports repeated `--config` deep-merge and repeated `--set key.path=value` overrides.
 - CLI `run_from_config` pre-validates config schema by default; use `--skip-schema-validation` to bypass.
+- `run_meta.json` includes `config_governance` and `leakage_guard` sections for run auditability.
 - CLI logging: major entrypoints support `--log-level` and `--log-file`; env `FACTORLAB_LOG_LEVEL` is also supported.
   - run metadata includes `warning_summary` for benign/actionable warning audit.
 - CLI output retention:
