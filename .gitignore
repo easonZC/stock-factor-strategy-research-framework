@@ -3,6 +3,7 @@
 /stock_data/
 /outputs/
 /artifacts/
+PROGRESS.md
 .env
 *.parquet
 *.csv
