@@ -34,4 +34,4 @@ def test_generate_run_config_script_smoke(tmp_path: Path) -> None:
     assert cfg["run"]["eval_axis"] == "cross_section"
     assert cfg["research"]["quantiles"] == 7
     assert cfg["factor"]["on_missing"] == "warn_skip"
-
+    assert cfg["factor"]["combinations"] == []

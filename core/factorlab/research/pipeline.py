@@ -12,6 +12,7 @@ from factorlab.config import ResearchConfig
 from factorlab.plotting import (
     plot_corr_heatmap,
     plot_coverage,
+    plot_group_bar,
     plot_ic_decay,
     plot_ic_series,
     plot_outlier_before_after,
@@ -33,6 +34,7 @@ from factorlab.research.advanced_metrics import (
     summarize_quantile_monotonicity,
     summarize_quantile_profile,
 )
+from factorlab.research.regression import make_size_style_bucket, quantile_group_decomposition, run_fama_macbeth
 from factorlab.research.forward_returns import add_forward_returns
 from factorlab.research.quantile import quantile_returns
 from factorlab.research.report import render_report
@@ -215,6 +217,103 @@ class FactorResearchPipeline:
                 pd.DataFrame([ls_diagnostics]).to_csv(ls_diag_csv, index=False)
                 fac_table_paths.append(ls_diag_csv)
 
+                # cross-sectional regression diagnostics (Fama-MacBeth)
+                reg_cols = ["date", "asset", col, primary_ret_col]
+                if "mkt_cap" in panel.columns:
+                    reg_cols.append("mkt_cap")
+                if "industry" in panel.columns:
+                    reg_cols.append("industry")
+                reg_df = panel[reg_cols].rename(columns={col: "factor"}).copy()
+                reg_df = handle_missing(reg_df, cols=["factor", primary_ret_col], policy="drop")
+                fmb_coef_df, fmb_summary = run_fama_macbeth(
+                    reg_df,
+                    ret_col=primary_ret_col,
+                    factor_col="factor",
+                    size_col="mkt_cap" if "mkt_cap" in reg_df.columns else None,
+                    industry_col="industry" if "industry" in reg_df.columns else None,
+                    min_obs=max(20, int(self.config.quantiles) * 2),
+                )
+                fmb_coef_csv = fac_table_dir / "fama_macbeth_daily.csv"
+                fmb_sum_csv = fac_table_dir / "fama_macbeth_summary.csv"
+                fmb_coef_df.to_csv(fmb_coef_csv, index=False)
+                fmb_summary.to_csv(fmb_sum_csv, index=False)
+                fac_table_paths.extend([fmb_coef_csv, fmb_sum_csv])
+                if not fmb_summary.empty:
+                    fac_fig_paths.append(
+                        plot_group_bar(
+                            fmb_summary,
+                            fac_asset_dir / "fama_macbeth_beta.png",
+                            label_col="coef",
+                            value_col="mean_beta",
+                            title=f"{fac} [{variant}] Fama-MacBeth mean beta",
+                        )
+                    )
+
+                # group decomposition diagnostics (industry / size style)
+                ind_detail = pd.DataFrame()
+                ind_summary = pd.DataFrame()
+                if "industry" in reg_df.columns:
+                    ind_detail, ind_summary = quantile_group_decomposition(
+                        reg_df,
+                        factor_col="factor",
+                        ret_col=primary_ret_col,
+                        group_col="industry",
+                        quantiles=int(self.config.quantiles),
+                        min_group_size=max(6, int(self.config.quantiles)),
+                    )
+                    ind_detail_csv = fac_table_dir / "industry_decomposition_daily.csv"
+                    ind_sum_csv = fac_table_dir / "industry_decomposition_summary.csv"
+                    ind_detail.to_csv(ind_detail_csv, index=False)
+                    ind_summary.to_csv(ind_sum_csv, index=False)
+                    fac_table_paths.extend([ind_detail_csv, ind_sum_csv])
+                    if not ind_summary.empty:
+                        fac_fig_paths.append(
+                            plot_group_bar(
+                                ind_summary,
+                                fac_asset_dir / "industry_decomposition.png",
+                                label_col="group",
+                                value_col="mean_long_short",
+                                title=f"{fac} [{variant}] Industry decomposition",
+                            )
+                        )
+
+                style_detail = pd.DataFrame()
+                style_summary = pd.DataFrame()
+                if "mkt_cap" in reg_df.columns:
+                    style_df = reg_df.copy()
+                    style_df["style_bucket"] = make_size_style_bucket(style_df, size_col="mkt_cap")
+                    style_detail, style_summary = quantile_group_decomposition(
+                        style_df,
+                        factor_col="factor",
+                        ret_col=primary_ret_col,
+                        group_col="style_bucket",
+                        quantiles=int(self.config.quantiles),
+                        min_group_size=max(6, int(self.config.quantiles)),
+                    )
+                    style_detail_csv = fac_table_dir / "style_decomposition_daily.csv"
+                    style_sum_csv = fac_table_dir / "style_decomposition_summary.csv"
+                    style_detail.to_csv(style_detail_csv, index=False)
+                    style_summary.to_csv(style_sum_csv, index=False)
+                    fac_table_paths.extend([style_detail_csv, style_sum_csv])
+                    if not style_summary.empty:
+                        fac_fig_paths.append(
+                            plot_group_bar(
+                                style_summary,
+                                fac_asset_dir / "style_decomposition.png",
+                                label_col="group",
+                                value_col="mean_long_short",
+                                title=f"{fac} [{variant}] Style decomposition",
+                            )
+                        )
+
+                fmb_factor = (
+                    fmb_summary[fmb_summary["coef"] == "factor"].iloc[0].to_dict()
+                    if not fmb_summary.empty and (fmb_summary["coef"] == "factor").any()
+                    else {}
+                )
+                top_industry = ind_summary.iloc[0].to_dict() if not ind_summary.empty else {}
+                top_style = style_summary.iloc[0].to_dict() if not style_summary.empty else {}
+
                 # Newey-West on long-short daily returns
                 nw_t_ls, nw_p_ls = newey_west_tstat(q_daily["long_short"])
                 ls_profile_row = q_profile[q_profile["bucket"] == "long_short"]
@@ -248,6 +347,13 @@ class FactorResearchPipeline:
                         "ls_beta": ls_reg.get("ls_beta", np.nan),
                         "ls_r2": ls_reg.get("ls_r2", np.nan),
                         "rank_autocorr_lag1_mean": rank_ac_mean,
+                        "fmb_factor_beta_mean": fmb_factor.get("mean_beta", np.nan),
+                        "fmb_factor_nw_t": fmb_factor.get("nw_t", np.nan),
+                        "fmb_factor_nw_p": fmb_factor.get("nw_p", np.nan),
+                        "industry_top_group": top_industry.get("group", np.nan),
+                        "industry_top_group_mean_ls": top_industry.get("mean_long_short", np.nan),
+                        "style_top_group": top_style.get("group", np.nan),
+                        "style_top_group_mean_ls": top_style.get("mean_long_short", np.nan),
                     }
                 )
 

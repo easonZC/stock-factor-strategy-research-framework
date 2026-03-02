@@ -45,6 +45,13 @@ class BacktestConfig:
     max_participation_rate: float | None = None
     benchmark_mode: BenchmarkMode = "none"
     benchmark_return_col: str = "benchmark_ret"
+    # Risk constraints
+    max_turnover: float | None = None
+    max_abs_weight: float | None = None
+    max_gross_exposure: float | None = None
+    max_net_exposure: float | None = None
+    enforce_industry_neutral: bool = False
+    industry_col: str = "industry"
 
 
 @dataclass(slots=True)

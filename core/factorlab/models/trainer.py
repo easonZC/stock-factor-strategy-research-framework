@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -25,6 +25,8 @@ class OOFSplitConfig:
     valid_days: int = 21
     step_days: int = 21
     embargo_days: int = 5
+    purge_days: int = 0
+    split_mode: Literal["rolling", "expanding"] = "rolling"
     min_train_rows: int = 500
     min_valid_rows: int = 100
 
@@ -37,6 +39,10 @@ class OOFSplitConfig:
             raise ValueError("OOFSplitConfig.step_days must be > 0.")
         if int(self.embargo_days) < 0:
             raise ValueError("OOFSplitConfig.embargo_days must be >= 0.")
+        if int(self.purge_days) < 0:
+            raise ValueError("OOFSplitConfig.purge_days must be >= 0.")
+        if str(self.split_mode) not in {"rolling", "expanding"}:
+            raise ValueError("OOFSplitConfig.split_mode must be one of ['rolling', 'expanding'].")
         if int(self.min_train_rows) <= 0:
             raise ValueError("OOFSplitConfig.min_train_rows must be > 0.")
         if int(self.min_valid_rows) <= 0:
@@ -70,11 +76,14 @@ def _daily_rank_ic(df: pd.DataFrame, pred_col: str, label_col: str) -> float:
 def _iter_folds(dates: list[pd.Timestamp], cfg: OOFSplitConfig):
     if int(cfg.step_days) <= 0:
         raise ValueError("OOFSplitConfig.step_days must be > 0.")
-    i = int(cfg.train_days) + int(cfg.embargo_days)
+    i = int(cfg.train_days) + int(cfg.embargo_days) + int(cfg.purge_days)
     fold_id = 0
     while i + int(cfg.valid_days) <= len(dates):
-        train_end = i - int(cfg.embargo_days)
-        train_start = max(0, train_end - int(cfg.train_days))
+        train_end = i - int(cfg.embargo_days) - int(cfg.purge_days)
+        if str(cfg.split_mode) == "expanding":
+            train_start = 0
+        else:
+            train_start = max(0, train_end - int(cfg.train_days))
         valid_start = i
         valid_end = i + int(cfg.valid_days)
 
@@ -94,6 +103,36 @@ def _normalize_param_grid(param_grid: list[dict[str, object]] | None) -> list[di
     return clean if clean else [{}]
 
 
+def _normalize_scoring_inputs(scoring_metric: str, evaluation_axis: str) -> tuple[str, str]:
+    metric = str(scoring_metric).strip().lower()
+    axis = str(evaluation_axis).strip().lower()
+    if metric not in {"rank_ic", "mse"}:
+        raise ValueError("scoring_metric must be one of ['rank_ic', 'mse'].")
+    if axis not in {"cross_section", "time"}:
+        raise ValueError("evaluation_axis must be one of ['cross_section', 'time'].")
+    return metric, axis
+
+
+def _daily_mse(df: pd.DataFrame, pred_col: str, label_col: str) -> float:
+    g = df[[pred_col, label_col]].dropna()
+    if g.empty:
+        return float("nan")
+    diff = g[pred_col].astype(float) - g[label_col].astype(float)
+    return float(np.mean(diff**2))
+
+
+def _time_series_ic(df: pd.DataFrame, pred_col: str, label_col: str) -> float:
+    vals: list[float] = []
+    for _, grp in df.groupby("asset"):
+        g = grp[[pred_col, label_col]].dropna()
+        if len(g) < 8:
+            continue
+        vals.append(float(g[pred_col].corr(g[label_col])))
+    if not vals:
+        return float("nan")
+    return float(np.nanmean(vals))
+
+
 def _fit_predict_fold(
     df: pd.DataFrame,
     feature_cols: list[str],
@@ -103,6 +142,8 @@ def _fit_predict_fold(
     train_dates: list[pd.Timestamp],
     valid_dates: list[pd.Timestamp],
     cfg: OOFSplitConfig,
+    scoring_metric: str,
+    evaluation_axis: str,
 ) -> tuple[pd.DataFrame, dict[str, float | int | str] | None]:
     train = df[df["date"].isin(train_dates)].copy()
     valid = df[df["date"].isin(valid_dates)].copy()
@@ -123,10 +164,24 @@ def _fit_predict_fold(
     scored = valid[["date", "asset", label_col]].copy()
     scored["pred"] = pred.astype(float)
     fold_rank_ic = _daily_rank_ic(scored, pred_col="pred", label_col=label_col)
+    fold_time_ic = _time_series_ic(scored, pred_col="pred", label_col=label_col)
+    fold_mse = _daily_mse(scored, pred_col="pred", label_col=label_col)
+    score_metric, axis = _normalize_scoring_inputs(scoring_metric=scoring_metric, evaluation_axis=evaluation_axis)
+    if score_metric == "mse":
+        fold_score = -fold_mse if np.isfinite(fold_mse) else float("nan")
+    elif axis == "time":
+        fold_score = fold_time_ic
+    else:
+        fold_score = fold_rank_ic
     fold_info: dict[str, float | int | str] = {
         "train_rows": int(len(train)),
         "valid_rows": int(len(valid)),
+        "oof_score": fold_score,
+        "oof_score_metric": score_metric,
+        "oof_axis": axis,
         "oof_rank_ic": fold_rank_ic,
+        "oof_time_ic": fold_time_ic,
+        "oof_mse": fold_mse,
     }
     return scored, fold_info
 
@@ -138,9 +193,16 @@ def train_oof_model_factor(
     label_horizon: int = 5,
     split_config: OOFSplitConfig | None = None,
     param_grid: list[dict[str, object]] | None = None,
+    label_col: str | None = None,
+    scoring_metric: Literal["rank_ic", "mse"] = "rank_ic",
+    evaluation_axis: Literal["cross_section", "time"] = "cross_section",
 ) -> OOFModelFactorResult:
     """Train an OOF model factor via rolling time splits."""
     cfg = split_config or OOFSplitConfig()
+    score_metric, axis = _normalize_scoring_inputs(
+        scoring_metric=str(scoring_metric),
+        evaluation_axis=str(evaluation_axis),
+    )
     missing = [c for c in ["date", "asset", "close", *feature_cols] if c not in panel.columns]
     if missing:
         raise KeyError(f"Panel missing required columns for OOF training: {missing}")
@@ -149,8 +211,13 @@ def train_oof_model_factor(
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df["asset"] = df["asset"].astype(str)
     df = df.dropna(subset=["date", "asset"]).sort_values(["date", "asset"]).reset_index(drop=True)
-    df = add_forward_returns(df, horizons=[int(label_horizon)], price_col="close")
-    label_col = f"fwd_ret_{int(label_horizon)}"
+    if label_col is None:
+        df = add_forward_returns(df, horizons=[int(label_horizon)], price_col="close")
+        label_col_eff = f"fwd_ret_{int(label_horizon)}"
+    else:
+        label_col_eff = str(label_col)
+        if label_col_eff not in df.columns:
+            raise KeyError(f"Provided label_col not found in panel: {label_col_eff}")
 
     unique_dates = sorted(pd.to_datetime(df["date"].dropna().unique()))
     if len(unique_dates) < (int(cfg.train_days) + int(cfg.valid_days) + int(cfg.embargo_days) + 5):
@@ -168,24 +235,28 @@ def train_oof_model_factor(
             scored, fold_info = _fit_predict_fold(
                 df=df,
                 feature_cols=feature_cols,
-                label_col=label_col,
+                label_col=label_col_eff,
                 model_name=model_name,
                 params=params,
                 train_dates=train_dates,
                 valid_dates=valid_dates,
                 cfg=cfg,
+                scoring_metric=score_metric,
+                evaluation_axis=axis,
             )
             if scored.empty or fold_info is None:
                 continue
             fold_count += 1
-            fold_scores.append(float(fold_info["oof_rank_ic"]))
+            fold_scores.append(float(fold_info["oof_score"]))
 
         mean_score = float(np.nanmean(fold_scores)) if fold_scores else float("nan")
         tuning_rows.append(
             {
                 "param_id": idx,
                 "params_json": json.dumps(params, ensure_ascii=False, default=str),
-                "mean_oof_rank_ic": mean_score,
+                "mean_oof_score": mean_score,
+                "score_metric": score_metric,
+                "evaluation_axis": axis,
                 "valid_folds": fold_count,
             }
         )
@@ -194,7 +265,7 @@ def train_oof_model_factor(
             best_params = dict(params)
 
     if not np.isfinite(best_score):
-        raise RuntimeError("OOF tuning failed: no valid folds produced finite rank-IC.")
+        raise RuntimeError("OOF tuning failed: no valid folds produced finite OOF score.")
 
     oof_parts: list[pd.DataFrame] = []
     fold_rows: list[dict[str, object]] = []
@@ -202,18 +273,20 @@ def train_oof_model_factor(
         scored, fold_info = _fit_predict_fold(
             df=df,
             feature_cols=feature_cols,
-            label_col=label_col,
+            label_col=label_col_eff,
             model_name=model_name,
             params=best_params,
             train_dates=train_dates,
             valid_dates=valid_dates,
             cfg=cfg,
+            scoring_metric=score_metric,
+            evaluation_axis=axis,
         )
         if scored.empty or fold_info is None:
             continue
         scored["fold_id"] = int(fold_id)
         scored["model"] = str(model_name)
-        oof_parts.append(scored.rename(columns={label_col: "label"}))
+        oof_parts.append(scored.rename(columns={label_col_eff: "label"}))
         fold_rows.append(
             {
                 "fold_id": int(fold_id),
@@ -234,11 +307,11 @@ def train_oof_model_factor(
     fold_summary = pd.DataFrame(fold_rows).sort_values("fold_id").reset_index(drop=True)
     tuning_summary = pd.DataFrame(tuning_rows).sort_values("param_id").reset_index(drop=True)
 
-    train_all = df.dropna(subset=[*feature_cols, label_col]).copy()
+    train_all = df.dropna(subset=[*feature_cols, label_col_eff]).copy()
     if train_all.empty:
         raise RuntimeError("No rows available to fit final model after OOF training.")
     final_model = ModelRegistry.create(model_name, params=best_params)
-    final_model.fit(train_all[feature_cols].astype(float).fillna(0.0), train_all[label_col].astype(float))
+    final_model.fit(train_all[feature_cols].astype(float).fillna(0.0), train_all[label_col_eff].astype(float))
 
     return OOFModelFactorResult(
         oof_predictions=oof_predictions,

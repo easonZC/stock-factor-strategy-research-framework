@@ -123,6 +123,8 @@ def build_template(scope: str, adapter: str, factors: list[str]) -> dict[str, An
             "plugin_on_error": "raise",
             "expressions": {},
             "expression_on_error": "raise",
+            "combinations": [],
+            "combination_on_error": "raise",
         },
         "research": _base_research(scope),
         "backtest": {

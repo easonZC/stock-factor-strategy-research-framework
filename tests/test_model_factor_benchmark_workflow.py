@@ -32,6 +32,10 @@ def test_model_factor_benchmark_workflow_smoke(tmp_path) -> None:
         train_days=100,
         valid_days=20,
         step_days=20,
+        purge_days=2,
+        split_mode="expanding",
+        scoring_metric="rank_ic",
+        evaluation_axis="cross_section",
         min_train_rows=250,
         min_valid_rows=80,
         horizons="5,10",
@@ -65,3 +69,4 @@ def test_model_factor_benchmark_workflow_smoke(tmp_path) -> None:
 
     run_meta = json.loads(result.run_meta_json.read_text(encoding="utf-8"))
     assert "resolved_models" in run_meta
+    assert "timings_seconds" in run_meta

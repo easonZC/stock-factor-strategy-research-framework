@@ -1,6 +1,7 @@
 ﻿"""Factor package exports."""
 
 from .base import Factor
+from .combiner import apply_factor_combinations, normalize_factor_combinations
 from .expression import (
     apply_factor_expressions,
     evaluate_factor_expression,
@@ -19,6 +20,7 @@ from .simple import LiquidityShockFactor, MomentumFactor, SizeFactor, Volatility
 
 __all__ = [
     "Factor",
+    "apply_factor_combinations",
     "apply_factor_expressions",
     "apply_factors",
     "build_factor_registry",
@@ -26,6 +28,7 @@ __all__ = [
     "discover_factor_registry",
     "evaluate_factor_expression",
     "extract_expression_dependencies",
+    "normalize_factor_combinations",
     "validate_factor_expression",
     "LiquidityShockFactor",
     "load_factor_plugins",

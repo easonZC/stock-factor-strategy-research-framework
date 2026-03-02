@@ -122,3 +122,29 @@ def plot_corr_heatmap(corr: pd.DataFrame, out_path: Path, title: str = "Factor C
     ax.set_title(title)
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     return _save(fig, out_path)
+
+
+def plot_group_bar(
+    df: pd.DataFrame,
+    out_path: Path,
+    label_col: str,
+    value_col: str,
+    title: str,
+) -> Path:
+    apply_style()
+    fig, ax = plt.subplots(figsize=(8.0, 4.5))
+    tmp = df.copy()
+    if tmp.empty or label_col not in tmp.columns or value_col not in tmp.columns:
+        ax.set_title(title)
+        ax.text(0.5, 0.5, "No data", ha="center", va="center")
+        return _save(fig, out_path)
+
+    tmp = tmp.sort_values(value_col, ascending=False)
+    x = np.arange(len(tmp))
+    colors = ["#1f77b4" if v >= 0 else "#d62728" for v in tmp[value_col].astype(float).values]
+    ax.bar(x, tmp[value_col].astype(float).values, color=colors, alpha=0.9)
+    ax.set_xticks(x)
+    ax.set_xticklabels(tmp[label_col].astype(str).tolist(), rotation=30, ha="right")
+    ax.set_title(title)
+    ax.set_ylabel(value_col)
+    return _save(fig, out_path)

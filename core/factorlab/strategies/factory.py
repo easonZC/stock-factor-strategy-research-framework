@@ -17,6 +17,7 @@ from factorlab.strategies.implementations import (
     LongShortQuantileStrategy,
     TopKLongStrategy,
 )
+from factorlab.strategies.optimizer import MeanVarianceOptimizerStrategy
 from factorlab.utils import get_logger
 
 LOGGER = get_logger("factorlab.strategies.factory")
@@ -29,6 +30,7 @@ def default_strategy_registry() -> dict[str, StrategyCtor]:
         "topk": lambda: TopKLongStrategy(name="topk_long", top_k=20),
         "longshort": lambda: LongShortQuantileStrategy(name="long_short_quantile", quantile=0.2),
         "flex": lambda: FlexibleLongShortStrategy(name="flexible_long_short"),
+        "meanvar": lambda: MeanVarianceOptimizerStrategy(name="mean_variance_optimizer"),
     }
 
 
@@ -250,4 +252,3 @@ def build_strategy_registry(
             on_error=on_plugin_error,
         )
     return registry
-

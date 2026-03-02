@@ -8,6 +8,7 @@ from .factory import (
     load_strategy_plugins,
 )
 from .implementations import FlexibleLongShortStrategy, LongShortQuantileStrategy, TopKLongStrategy
+from .optimizer import MeanVarianceOptimizerStrategy
 
 __all__ = [
     "FlexibleLongShortStrategy",
@@ -18,4 +19,5 @@ __all__ = [
     "default_strategy_registry",
     "discover_strategy_registry",
     "load_strategy_plugins",
+    "MeanVarianceOptimizerStrategy",
 ]

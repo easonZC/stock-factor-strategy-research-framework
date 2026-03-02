@@ -25,6 +25,7 @@ def parse_args() -> argparse.Namespace:
             "Examples:\n"
             "  python apps/run_model_factor_benchmark.py --panel data/panel.parquet --models lgbm,mlp --out outputs/research/model_factor/benchmark\n"
             "  python apps/run_model_factor_benchmark.py --panel data/panel.parquet --models ridge,rf --label-horizon 10 --out outputs/research/model_factor/benchmark_h10\n"
+            "  python apps/run_model_factor_benchmark.py --panel data/panel.parquet --models ridge --scoring-metric mse --evaluation-axis time --split-mode expanding --out outputs/research/model_factor/benchmark_mse\n"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -58,8 +59,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--valid-days", type=int, default=21)
     parser.add_argument("--step-days", type=int, default=21)
     parser.add_argument("--embargo-days", type=int, default=None)
+    parser.add_argument("--purge-days", type=int, default=0)
+    parser.add_argument("--split-mode", choices=["rolling", "expanding"], default="rolling")
     parser.add_argument("--min-train-rows", type=int, default=500)
     parser.add_argument("--min-valid-rows", type=int, default=100)
+    parser.add_argument("--scoring-metric", choices=["rank_ic", "mse"], default="rank_ic")
+    parser.add_argument("--evaluation-axis", choices=["cross_section", "time"], default="cross_section")
     parser.add_argument(
         "--model-param-grid-dir",
         default=None,
@@ -101,8 +106,12 @@ def main() -> None:
         valid_days=args.valid_days,
         step_days=args.step_days,
         embargo_days=args.embargo_days,
+        purge_days=args.purge_days,
+        split_mode=args.split_mode,
         min_train_rows=args.min_train_rows,
         min_valid_rows=args.min_valid_rows,
+        scoring_metric=args.scoring_metric,
+        evaluation_axis=args.evaluation_axis,
         model_param_grid_dir=args.model_param_grid_dir,
         horizons=args.horizons,
         neutralize=args.neutralize,

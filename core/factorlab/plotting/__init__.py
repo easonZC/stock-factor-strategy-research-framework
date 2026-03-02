@@ -3,6 +3,7 @@
 from .charts import (
     plot_corr_heatmap,
     plot_coverage,
+    plot_group_bar,
     plot_ic_decay,
     plot_ic_series,
     plot_outlier_before_after,
@@ -14,6 +15,7 @@ from .charts import (
 __all__ = [
     "plot_corr_heatmap",
     "plot_coverage",
+    "plot_group_bar",
     "plot_ic_decay",
     "plot_ic_series",
     "plot_outlier_before_after",

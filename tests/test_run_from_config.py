@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pandas as pd
 import yaml
 
 from factorlab.workflows import run_from_config
@@ -57,6 +58,7 @@ def test_run_from_config_cs_smoke(tmp_path) -> None:
     meta = json.loads(result.run_meta_json.read_text(encoding="utf-8"))
     assert meta["scope"]["factor_scope"] == "cs"
     assert meta["scope"]["eval_axis"] == "cross_section"
+    assert "timings_seconds" in meta and "research" in meta["timings_seconds"]
 
 
 def test_run_from_config_ts_smoke(tmp_path) -> None:
@@ -102,6 +104,7 @@ def test_run_from_config_ts_smoke(tmp_path) -> None:
     meta = json.loads(result.run_meta_json.read_text(encoding="utf-8"))
     assert meta["scope"]["factor_scope"] == "ts"
     assert meta["scope"]["eval_axis"] == "time"
+    assert "timings_seconds" in meta and "backtest" in meta["timings_seconds"]
 
 
 def test_run_from_config_warn_skip_factor_and_flexible_preprocess(tmp_path) -> None:
@@ -145,3 +148,115 @@ def test_run_from_config_warn_skip_factor_and_flexible_preprocess(tmp_path) -> N
     assert meta["factors"]["requested"] == ["momentum_20", "not_exists_factor"]
     assert meta["factors"]["effective"] == ["momentum_20"]
     assert meta["factors"]["on_missing"] == "warn_skip"
+
+
+def test_run_from_config_cs_meanvar_and_regression_outputs(tmp_path) -> None:
+    cfg = {
+        "run": {
+            "factor_scope": "cs",
+            "eval_axis": "cross_section",
+            "standardization": "cs_zscore",
+        },
+        "data": {
+            "mode": "panel",
+            "adapter": "synthetic",
+            "fields_required": ["date", "asset", "close", "volume", "mkt_cap", "industry"],
+            "synthetic": {
+                "n_assets": 12,
+                "n_days": 180,
+                "seed": 907,
+                "start_date": "2020-01-01",
+            },
+        },
+        "factor": {"names": ["momentum_20", "volatility_20"]},
+        "research": {
+            "horizons": [1, 5],
+            "quantiles": 5,
+            "ic_rolling_window": 20,
+            "winsorize": {"enabled": True, "method": "quantile"},
+            "neutralize": {"enabled": True, "mode": "both"},
+        },
+        "backtest": {
+            "enabled": True,
+            "strategy": {
+                "mode": "meanvar",
+                "risk_aversion": 4.0,
+                "gross_target": 1.2,
+                "net_target": 0.0,
+                "max_weight": 0.2,
+            },
+            "leverage": 1.2,
+            "max_turnover": 0.8,
+            "max_abs_weight": 0.2,
+            "max_gross_exposure": 1.2,
+            "max_net_exposure": 0.3,
+            "benchmark_mode": "cross_sectional_mean",
+        },
+    }
+    cfg_path = tmp_path / "cs_meanvar.yaml"
+    _write_yaml(cfg_path, cfg)
+
+    out_dir = tmp_path / "out_cs_meanvar"
+    result = run_from_config(config=cfg_path, out_dir=out_dir)
+    assert result.index_html.exists()
+    assert result.backtest_summary_csv is not None and result.backtest_summary_csv.exists()
+    bt_summary = pd.read_csv(Path(result.backtest_summary_csv))
+    assert set(bt_summary["strategy_mode"]) == {"meanvar"}
+
+    fmb_summary = out_dir / "tables" / "factors" / "momentum_20" / "raw" / "fama_macbeth_summary.csv"
+    industry_summary = out_dir / "tables" / "factors" / "momentum_20" / "raw" / "industry_decomposition_summary.csv"
+    style_summary = out_dir / "tables" / "factors" / "momentum_20" / "raw" / "style_decomposition_summary.csv"
+    assert fmb_summary.exists()
+    assert industry_summary.exists()
+    assert style_summary.exists()
+
+
+def test_run_from_config_with_factor_combinations(tmp_path) -> None:
+    cfg = {
+        "run": {
+            "factor_scope": "cs",
+            "eval_axis": "cross_section",
+            "standardization": "cs_zscore",
+        },
+        "data": {
+            "mode": "panel",
+            "adapter": "synthetic",
+            "fields_required": ["date", "asset", "close", "volume", "mkt_cap", "industry"],
+            "synthetic": {
+                "n_assets": 10,
+                "n_days": 160,
+                "seed": 517,
+                "start_date": "2020-01-01",
+            },
+        },
+        "factor": {
+            "names": ["combo_mom_vol"],
+            "combinations": [
+                {
+                    "name": "combo_mom_vol",
+                    "weights": {"momentum_20": 1.0, "volatility_20": -0.5},
+                    "standardization": "cs_zscore",
+                    "orthogonalize_to": ["size"],
+                }
+            ],
+        },
+        "research": {
+            "horizons": [1, 5],
+            "quantiles": 5,
+            "ic_rolling_window": 20,
+            "winsorize": {"enabled": True, "method": "quantile"},
+            "neutralize": {"enabled": True, "mode": "both"},
+        },
+        "backtest": {"enabled": False},
+    }
+    cfg_path = tmp_path / "combo.yaml"
+    _write_yaml(cfg_path, cfg)
+    out_dir = tmp_path / "out_combo"
+    result = run_from_config(config=cfg_path, out_dir=out_dir)
+    assert result.index_html.exists()
+    summary = pd.read_csv(result.summary_csv)
+    assert "combo_mom_vol" in set(summary["factor"].astype(str))
+
+    meta = json.loads(result.run_meta_json.read_text(encoding="utf-8"))
+    assert "combo_mom_vol" in meta["factors"]["computed_combination_factors"]
+    assert "combo_mom_vol" in meta["factors"]["effective"]

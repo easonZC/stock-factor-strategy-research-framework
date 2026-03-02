@@ -29,20 +29,23 @@ from factorlab.data import (
     read_panel,
 )
 from factorlab.factors import (
+    apply_factor_combinations,
     apply_factor_expressions,
     apply_factors,
     build_factor_registry,
     extract_expression_dependencies,
+    normalize_factor_combinations,
 )
 from factorlab.research import FactorResearchPipeline, TSResearchConfig, TimeSeriesFactorResearchPipeline
 from factorlab.strategies import (
     FlexibleLongShortStrategy,
     LongShortQuantileStrategy,
+    MeanVarianceOptimizerStrategy,
     Strategy,
     TopKLongStrategy,
     build_strategy_registry,
 )
-from factorlab.utils import get_logger
+from factorlab.utils import get_logger, timed_stage
 from factorlab.workflows.runtime import collect_runtime_manifest
 
 LOGGER = get_logger("factorlab.workflows.config_runner")
@@ -111,6 +114,18 @@ def _to_float(value: Any, default: float) -> float:
         return float(value)
     except (TypeError, ValueError):
         return float(default)
+
+
+def _to_optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(out):
+        return None
+    return out
 
 
 def _normalize_factor_scope(cfg: dict[str, Any]) -> dict[str, Any]:
@@ -263,6 +278,11 @@ def _normalize_factor_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
         expression_on_error = "raise"
 
     expressions = _normalize_factor_expressions(fac_cfg.get("expressions"), strict=False)
+    combination_on_error = str(fac_cfg.get("combination_on_error", "raise")).strip().lower()
+    if combination_on_error not in {"raise", "warn_skip"}:
+        LOGGER.warning("Invalid factor.combination_on_error='%s'. Use 'raise'.", combination_on_error)
+        combination_on_error = "raise"
+    combinations = normalize_factor_combinations(fac_cfg.get("combinations"), strict=False)
 
     return {
         "names": names,
@@ -273,6 +293,8 @@ def _normalize_factor_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
         "plugin_on_error": plugin_on_error,
         "expression_on_error": expression_on_error,
         "expressions": expressions,
+        "combinations": combinations,
+        "combination_on_error": combination_on_error,
     }
 
 
@@ -333,7 +355,7 @@ def _normalize_backtest_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str
     strategy_cfg = _as_dict(raw.get("strategy"))
     default_mode = "sign" if scope == "ts" else "longshort"
     strategy_mode = str(strategy_cfg.get("mode", default_mode)).strip().lower() or default_mode
-    builtin_modes = {"sign", "topk", "longshort", "flex"}
+    builtin_modes = {"sign", "topk", "longshort", "flex", "meanvar"}
     if strategy_mode not in builtin_modes:
         LOGGER.info(
             "Using custom strategy mode '%s'. Will resolve via strategy plugin registry.",
@@ -363,12 +385,23 @@ def _normalize_backtest_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str
         "rebalance_every": max(1, _to_int(strategy_cfg.get("rebalance_every"), 1)),
         "weight_scheme": str(strategy_cfg.get("weight_scheme", "equal")).strip().lower(),
         "max_weight": strategy_cfg.get("max_weight"),
+        "risk_aversion": max(1e-6, _to_float(strategy_cfg.get("risk_aversion"), 5.0)),
+        "gross_target": max(0.1, _to_float(strategy_cfg.get("gross_target"), 1.0)),
+        "net_target": _to_float(strategy_cfg.get("net_target"), 0.0),
         "sign_threshold": max(0.0, _to_float(strategy_cfg.get("sign_threshold"), 0.0)),
         "commission_bps": _to_float(raw.get("commission_bps"), 3.0),
         "slippage_bps": _to_float(raw.get("slippage_bps"), 2.0),
         "leverage": max(0.1, _to_float(raw.get("leverage"), 1.0)),
         "execution_delay_days": max(0, _to_int(raw.get("execution_delay_days"), 1)),
         "execution_price_col": str(raw.get("execution_price_col", "close")).strip(),
+        "max_turnover": raw.get("max_turnover"),
+        "max_abs_weight": raw.get("max_abs_weight"),
+        "max_gross_exposure": raw.get("max_gross_exposure"),
+        "max_net_exposure": raw.get("max_net_exposure"),
+        "enforce_industry_neutral": _to_bool(raw.get("enforce_industry_neutral"), False),
+        "industry_col": str(raw.get("industry_col", "industry")).strip(),
+        "benchmark_mode": str(raw.get("benchmark_mode", "none")).strip().lower(),
+        "benchmark_return_col": str(raw.get("benchmark_return_col", "benchmark_ret")).strip(),
         "strategy_plugin_dirs": strategy_plugin_dirs,
         "strategy_plugins": strategy_plugins,
         "strategy_auto_discover": strategy_auto_discover,
@@ -521,6 +554,9 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     expression_on_error = str(factor_cfg.get("expression_on_error", "raise")).strip().lower()
     if expression_on_error not in {"raise", "warn_skip"}:
         errors.append("factor.expression_on_error: must be one of ['raise', 'warn_skip'].")
+    combination_on_error = str(factor_cfg.get("combination_on_error", "raise")).strip().lower()
+    if combination_on_error not in {"raise", "warn_skip"}:
+        errors.append("factor.combination_on_error: must be one of ['raise', 'warn_skip'].")
 
     try:
         expressions = _normalize_factor_expressions(factor_cfg.get("expressions"), strict=True)
@@ -533,6 +569,18 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
                 errors.append(f"factor.expressions[{name}]: invalid expression ({exc}).")
     except Exception as exc:
         errors.append(f"factor.expressions: invalid format ({exc}).")
+
+    try:
+        combinations = normalize_factor_combinations(factor_cfg.get("combinations"), strict=True)
+        for spec in combinations:
+            if not str(spec.get("name", "")).strip():
+                errors.append("factor.combinations: each combination must have non-empty name.")
+            weights = spec.get("weights", {})
+            if not isinstance(weights, dict) or not weights:
+                errors.append("factor.combinations: each combination must have non-empty weights mapping.")
+                break
+    except Exception as exc:
+        errors.append(f"factor.combinations: invalid format ({exc}).")
 
     research_cfg = _as_dict(cfg.get("research"))
     horizons = _as_list(research_cfg.get("horizons"))
@@ -574,7 +622,7 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     back_cfg = _as_dict(cfg.get("backtest"))
     strategy_cfg = _as_dict(back_cfg.get("strategy"))
     mode_val = str(strategy_cfg.get("mode", "")).strip().lower()
-    builtin_modes = {"sign", "topk", "longshort", "flex"}
+    builtin_modes = {"sign", "topk", "longshort", "flex", "meanvar"}
     if mode_val and mode_val not in builtin_modes:
         has_plugins = bool(_as_list(strategy_cfg.get("plugins"))) or bool(_as_list(strategy_cfg.get("plugin_dirs")))
         if not has_plugins:
@@ -586,6 +634,22 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     strategy_plugin_on_error = str(strategy_cfg.get("plugin_on_error", "raise")).strip().lower()
     if strategy_plugin_on_error not in {"raise", "warn_skip"}:
         errors.append("backtest.strategy.plugin_on_error: must be one of ['raise', 'warn_skip'].")
+
+    bench_mode = str(back_cfg.get("benchmark_mode", "none")).strip().lower()
+    if bench_mode not in {"none", "cross_sectional_mean", "panel_column"}:
+        errors.append("backtest.benchmark_mode: must be one of ['none', 'cross_sectional_mean', 'panel_column'].")
+
+    for fld in ["max_turnover", "max_abs_weight", "max_gross_exposure", "max_net_exposure"]:
+        raw = back_cfg.get(fld, None)
+        if raw is None:
+            continue
+        try:
+            val = float(raw)
+        except Exception:
+            errors.append(f"backtest.{fld}: must be a number when provided.")
+            continue
+        if val < 0:
+            errors.append(f"backtest.{fld}: must be >= 0.")
 
     if errors and strict:
         msg = "Run config schema validation failed:\n" + "\n".join(f"- {x}" for x in errors)
@@ -781,6 +845,16 @@ def _build_strategy(back_cfg: dict[str, Any], strategy_registry: dict[str, Any])
             weight_scheme=back_cfg["weight_scheme"],
             max_weight=back_cfg["max_weight"],
         )
+    if mode == "meanvar":
+        return MeanVarianceOptimizerStrategy(
+            name="mean_variance_optimizer",
+            risk_aversion=float(back_cfg["risk_aversion"]),
+            long_only=bool(back_cfg["long_only"]),
+            gross_target=float(back_cfg["gross_target"]),
+            net_target=float(back_cfg["net_target"]),
+            rebalance_every=int(back_cfg["rebalance_every"]),
+            max_weight=back_cfg["max_weight"],
+        )
     if mode not in strategy_registry:
         raise KeyError(
             f"Unknown strategy mode '{mode}'. Available strategy plugins: {sorted(strategy_registry.keys())}"
@@ -823,6 +897,14 @@ def _run_optional_backtest(
         long_short_leverage=float(back_cfg["leverage"]),
         execution_delay_days=int(back_cfg["execution_delay_days"]),
         execution_price_col=back_cfg["execution_price_col"],
+        max_turnover=_to_optional_float(back_cfg["max_turnover"]),
+        max_abs_weight=_to_optional_float(back_cfg["max_abs_weight"]),
+        max_gross_exposure=_to_optional_float(back_cfg["max_gross_exposure"]),
+        max_net_exposure=_to_optional_float(back_cfg["max_net_exposure"]),
+        enforce_industry_neutral=bool(back_cfg["enforce_industry_neutral"]),
+        industry_col=back_cfg["industry_col"],
+        benchmark_mode=back_cfg["benchmark_mode"],  # type: ignore[arg-type]
+        benchmark_return_col=back_cfg["benchmark_return_col"],
     )
 
     strategy_registry = build_strategy_registry(
@@ -882,47 +964,72 @@ def run_from_config(
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    timings: dict[str, float] = {}
 
-    panel, load_report = _load_data(data_cfg, scope_cfg)
-    panel, mode_report = _ensure_mode_shape(panel, data_cfg=data_cfg)
-    factor_registry = build_factor_registry(
-        plugin_dirs=fac_cfg["plugin_dirs"] if fac_cfg["auto_discover"] else [],
-        plugin_specs=fac_cfg["plugins"],
-        on_plugin_error=fac_cfg["plugin_on_error"],
-    )
+    with timed_stage("load_data", timings=timings, logger_name="factorlab.workflows.config_runner"):
+        panel, load_report = _load_data(data_cfg, scope_cfg)
+        panel, mode_report = _ensure_mode_shape(panel, data_cfg=data_cfg)
+
+    with timed_stage("build_factor_registry", timings=timings, logger_name="factorlab.workflows.config_runner"):
+        factor_registry = build_factor_registry(
+            plugin_dirs=fac_cfg["plugin_dirs"] if fac_cfg["auto_discover"] else [],
+            plugin_specs=fac_cfg["plugins"],
+            on_plugin_error=fac_cfg["plugin_on_error"],
+        )
     requested_factors = list(fac_cfg["names"])
     expressions = dict(fac_cfg["expressions"])
+    combinations = list(fac_cfg["combinations"])
     expression_outputs = set(expressions.keys())
     expression_dependencies: set[str] = set()
     for expr in expressions.values():
         expression_dependencies.update(extract_expression_dependencies(expr))
     expression_dependencies -= expression_outputs
 
-    auto_factor_candidates = sorted((set(requested_factors) - expression_outputs) | expression_dependencies)
+    combination_outputs = {str(x.get("name")).strip() for x in combinations if str(x.get("name", "")).strip()}
+    combination_dependencies: set[str] = set()
+    for spec in combinations:
+        weights = spec.get("weights", {})
+        if isinstance(weights, dict):
+            combination_dependencies.update(str(k).strip() for k in weights if str(k).strip())
+        combination_dependencies.update(
+            str(x).strip() for x in spec.get("orthogonalize_to", []) if str(x).strip()
+        )
 
-    candidate_factors, precheck_skipped_factors = _filter_factors_by_available_columns(
-        panel=panel,
-        factor_names=auto_factor_candidates,
-        on_missing=fac_cfg["on_missing"],
+    auto_factor_candidates = sorted(
+        (set(requested_factors) - expression_outputs - combination_outputs)
+        | expression_dependencies
+        | combination_dependencies
     )
-    required_fields = _resolve_required_fields(
-        scope_cfg=scope_cfg,
-        data_cfg=data_cfg,
-        factor_names=candidate_factors,
-        research_cfg=research_cfg,
-    )
-    _validate_required_fields(panel, required=required_fields)
-    panel, computed_factors, effective_factors = _compute_factors(
-        panel,
-        factor_names=candidate_factors,
-        on_missing=fac_cfg["on_missing"],
-        registry=factor_registry,
-    )
-    panel, computed_expression_factors, skipped_expression_factors, expression_errors = apply_factor_expressions(
-        panel,
-        expressions=expressions,
-        on_error=fac_cfg["expression_on_error"],
-    )
+
+    with timed_stage("factor_compute", timings=timings, logger_name="factorlab.workflows.config_runner"):
+        candidate_factors, precheck_skipped_factors = _filter_factors_by_available_columns(
+            panel=panel,
+            factor_names=auto_factor_candidates,
+            on_missing=fac_cfg["on_missing"],
+        )
+        required_fields = _resolve_required_fields(
+            scope_cfg=scope_cfg,
+            data_cfg=data_cfg,
+            factor_names=candidate_factors,
+            research_cfg=research_cfg,
+        )
+        _validate_required_fields(panel, required=required_fields)
+        panel, computed_factors, effective_factors = _compute_factors(
+            panel,
+            factor_names=candidate_factors,
+            on_missing=fac_cfg["on_missing"],
+            registry=factor_registry,
+        )
+        panel, computed_expression_factors, skipped_expression_factors, expression_errors = apply_factor_expressions(
+            panel,
+            expressions=expressions,
+            on_error=fac_cfg["expression_on_error"],
+        )
+        panel, computed_combination_factors, skipped_combination_factors, combination_errors = apply_factor_combinations(
+            panel,
+            combinations=combinations,
+            on_error=fac_cfg["combination_on_error"],
+        )
 
     unresolved_requested = [f for f in requested_factors if f not in panel.columns]
     if unresolved_requested:
@@ -939,53 +1046,58 @@ def run_from_config(
 
     universe_report = None
     if scope_cfg["factor_scope"] == "cs" and universe_cfg["enabled"]:
-        panel, universe_report = apply_universe_filter(panel, config=universe_cfg["config"])
+        with timed_stage("universe_filter", timings=timings, logger_name="factorlab.workflows.config_runner"):
+            panel, universe_report = apply_universe_filter(panel, config=universe_cfg["config"])
 
     panel = panel.sort_values(["date", "asset"]).reset_index(drop=True)
     if panel.empty:
         raise RuntimeError("No data available after preprocessing.")
 
-    if scope_cfg["factor_scope"] == "cs":
-        wins = _as_dict(research_cfg.get("winsorize"))
-        neu = _as_dict(research_cfg.get("neutralize"))
-        neutral_mode = str(neu.get("mode", "both")).strip().lower() if _to_bool(neu.get("enabled"), True) else "none"
-        if neutral_mode not in {"none", "size", "industry", "both"}:
-            LOGGER.warning("Invalid research.neutralize.mode='%s'. Use 'both'.", neutral_mode)
-            neutral_mode = "both"
+    with timed_stage("research", timings=timings, logger_name="factorlab.workflows.config_runner"):
+        if scope_cfg["factor_scope"] == "cs":
+            wins = _as_dict(research_cfg.get("winsorize"))
+            neu = _as_dict(research_cfg.get("neutralize"))
+            neutral_mode = (
+                str(neu.get("mode", "both")).strip().lower() if _to_bool(neu.get("enabled"), True) else "none"
+            )
+            if neutral_mode not in {"none", "size", "industry", "both"}:
+                LOGGER.warning("Invalid research.neutralize.mode='%s'. Use 'both'.", neutral_mode)
+                neutral_mode = "both"
 
-        cs_cfg = ResearchConfig(
-            horizons=research_cfg["horizons"],
-            quantiles=int(research_cfg["quantiles"]),
-            ic_rolling_window=int(research_cfg["ic_rolling_window"]),
-            standardization=scope_cfg["standardization"],  # type: ignore[arg-type]
-            winsorize_enabled=_to_bool(wins.get("enabled"), True),
-            winsorize_method=str(wins.get("method", "quantile")).strip().lower(),
-            lower_q=_to_float(wins.get("lower_q"), 0.01),
-            upper_q=_to_float(wins.get("upper_q"), 0.99),
-            mad_scale=max(1.0, _to_float(wins.get("mad_scale"), 5.0)),
-            missing_policy=str(research_cfg.get("missing_policy", "drop")),
-            preprocess_steps=research_cfg.get("preprocess_steps") or ["winsorize", "standardize", "neutralize"],
-            neutralization=NeutralizationConfig(mode=neutral_mode),  # type: ignore[arg-type]
-        )
-        outputs = FactorResearchPipeline(cs_cfg).run(panel=panel, factors=effective_factors, out_dir=out)
-    else:
-        ts_cfg = TSResearchConfig(
-            horizons=research_cfg["horizons"],
-            quantiles=int(research_cfg["quantiles"]),
-            ic_rolling_window=int(research_cfg["ic_rolling_window"]),
-            standardization=scope_cfg["standardization"],  # type: ignore[arg-type]
-            ts_standardize_window=int(research_cfg["ts_standardize_window"]),
-            ts_quantile_lookback=int(research_cfg["ts_quantile_lookback"]),
-        )
-        outputs = TimeSeriesFactorResearchPipeline(ts_cfg).run(panel=panel, factors=effective_factors, out_dir=out)
+            cs_cfg = ResearchConfig(
+                horizons=research_cfg["horizons"],
+                quantiles=int(research_cfg["quantiles"]),
+                ic_rolling_window=int(research_cfg["ic_rolling_window"]),
+                standardization=scope_cfg["standardization"],  # type: ignore[arg-type]
+                winsorize_enabled=_to_bool(wins.get("enabled"), True),
+                winsorize_method=str(wins.get("method", "quantile")).strip().lower(),
+                lower_q=_to_float(wins.get("lower_q"), 0.01),
+                upper_q=_to_float(wins.get("upper_q"), 0.99),
+                mad_scale=max(1.0, _to_float(wins.get("mad_scale"), 5.0)),
+                missing_policy=str(research_cfg.get("missing_policy", "drop")),
+                preprocess_steps=research_cfg.get("preprocess_steps") or ["winsorize", "standardize", "neutralize"],
+                neutralization=NeutralizationConfig(mode=neutral_mode),  # type: ignore[arg-type]
+            )
+            outputs = FactorResearchPipeline(cs_cfg).run(panel=panel, factors=effective_factors, out_dir=out)
+        else:
+            ts_cfg = TSResearchConfig(
+                horizons=research_cfg["horizons"],
+                quantiles=int(research_cfg["quantiles"]),
+                ic_rolling_window=int(research_cfg["ic_rolling_window"]),
+                standardization=scope_cfg["standardization"],  # type: ignore[arg-type]
+                ts_standardize_window=int(research_cfg["ts_standardize_window"]),
+                ts_quantile_lookback=int(research_cfg["ts_quantile_lookback"]),
+            )
+            outputs = TimeSeriesFactorResearchPipeline(ts_cfg).run(panel=panel, factors=effective_factors, out_dir=out)
 
-    backtest_summary_csv = _run_optional_backtest(
-        panel=panel,
-        factors=effective_factors,
-        scope_cfg=scope_cfg,
-        back_cfg=back_cfg,
-        out_dir=out,
-    )
+    with timed_stage("backtest", timings=timings, logger_name="factorlab.workflows.config_runner"):
+        backtest_summary_csv = _run_optional_backtest(
+            panel=panel,
+            factors=effective_factors,
+            scope_cfg=scope_cfg,
+            back_cfg=back_cfg,
+            out_dir=out,
+        )
 
     meta = {
         "scope": scope_cfg,
@@ -1005,11 +1117,17 @@ def run_from_config(
             "computed_expression_factors": computed_expression_factors,
             "skipped_expression_factors": skipped_expression_factors,
             "expression_errors": expression_errors,
+            "computed_combination_factors": computed_combination_factors,
+            "skipped_combination_factors": skipped_combination_factors,
+            "combination_errors": combination_errors,
             "unresolved_requested": unresolved_requested,
             "on_missing": fac_cfg["on_missing"],
             "expression_on_error": fac_cfg["expression_on_error"],
+            "combination_on_error": fac_cfg["combination_on_error"],
             "expressions": expressions,
             "expression_dependencies": sorted(expression_dependencies),
+            "combinations": combinations,
+            "combination_dependencies": sorted(combination_dependencies),
             "plugin_config": {
                 "auto_discover": fac_cfg["auto_discover"],
                 "plugin_dirs": fac_cfg["plugin_dirs"],
@@ -1028,6 +1146,7 @@ def run_from_config(
         "rows_after_pipeline": int(len(panel)),
         "assets_after_pipeline": int(panel["asset"].nunique()),
         "dates_after_pipeline": int(panel["date"].nunique()),
+        "timings_seconds": timings,
         "outputs": {k: str(v) for k, v in outputs.items()},
     }
     meta_path = out / "run_meta.json"
