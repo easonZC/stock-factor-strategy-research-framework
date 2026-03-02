@@ -96,8 +96,9 @@ For every complete run, append one new entry at the top of `Run History` with:
   - Tests passed: `17 passed`.
   - Config scaffold generation, config override run, and report output generation all completed successfully.
 - Git actions:
-  - Local commit: pending
-  - Push: pending
+  - Local commit succeeded: `8c04492` (`feat(cli): add config scaffold and override composition`).
+  - Push succeeded: `git push origin refactor/ssf-v2`.
+  - New PR created: `https://github.com/easonZC/stock-factor-strategy-research-framework/pull/4`
 - Next run direction:
   - Implement factor plugin auto-discovery (registry extension via module/class paths) for faster custom factor integration.
   - Add stronger typed config schema validation (friendly error reporting before runtime).
