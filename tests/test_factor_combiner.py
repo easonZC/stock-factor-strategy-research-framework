@@ -1,4 +1,4 @@
-"""Tests for configurable multi-factor combiner utilities."""
+"""模块说明。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""模型注册中心：内置模型 + 插件扩展 + 持久化。"""
+"""模块说明。"""
 
 from __future__ import annotations
 

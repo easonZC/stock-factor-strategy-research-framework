@@ -1,4 +1,4 @@
-"""数据适配器与配置校验钩子工厂。"""
+"""模块说明。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-﻿"""Backtest package exports."""
+﻿"""回测模块导出。"""
 
 from .engine import BacktestResult, run_backtest
 

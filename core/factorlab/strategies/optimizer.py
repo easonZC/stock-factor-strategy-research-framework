@@ -1,4 +1,4 @@
-"""Optimization-oriented strategy implementations."""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from factorlab.strategies.implementations import _normalize_long
 
 @dataclass(slots=True)
 class MeanVarianceOptimizerStrategy(Strategy):
-    """Lightweight mean-variance style optimizer using score as expected return proxy."""
+    """中文说明。"""
 
     risk_aversion: float = 5.0
     long_only: bool = False

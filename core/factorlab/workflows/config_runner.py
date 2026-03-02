@@ -1,4 +1,4 @@
-"""配置驱动的一键式 TS/CS 因子研究工作流。"""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -42,6 +42,7 @@ from factorlab.factors import (
 )
 from factorlab.preprocess import build_transform_registry
 from factorlab.research import FactorResearchPipeline, TSResearchConfig, TimeSeriesFactorResearchPipeline
+from factorlab.research.report import render_report
 from factorlab.strategies import (
     FlexibleLongShortStrategy,
     LongShortQuantileStrategy,
@@ -292,11 +293,15 @@ def _normalize_run_governance_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     leakage_guard_mode = str(run_cfg.get("leakage_guard_mode", "strict")).strip().lower()
     if leakage_guard_mode not in {"strict", "warn", "off"}:
         raise ValueError("run.leakage_guard_mode must be one of ['strict', 'warn', 'off'].")
+    stop_after = str(run_cfg.get("stop_after", "backtest")).strip().lower()
+    if stop_after not in {"factor", "research", "backtest"}:
+        raise ValueError("run.stop_after must be one of ['factor', 'research', 'backtest'].")
 
     fail_on_autocorrect = _to_bool(run_cfg.get("fail_on_autocorrect"), False)
     return {
         "config_mode": config_mode,
         "leakage_guard_mode": leakage_guard_mode,
+        "stop_after": stop_after,
         "fail_on_autocorrect": fail_on_autocorrect,
     }
 
@@ -386,6 +391,13 @@ def _collect_normalization_autocorrections(
         cfg,
         ("research", "ic_rolling_window"),
         research_cfg["ic_rolling_window"],
+        "bounded_min_value",
+    )
+    _collect_autocorrection(
+        corrections,
+        cfg,
+        ("research", "annualization_days"),
+        research_cfg["annualization_days"],
         "bounded_min_value",
     )
     _collect_autocorrection(
@@ -816,6 +828,7 @@ def _normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str
         "horizons": horizons,
         "quantiles": max(2, _to_int(raw.get("quantiles"), 5)),
         "ic_rolling_window": max(5, _to_int(raw.get("ic_rolling_window"), 20)),
+        "annualization_days": max(1, _to_int(raw.get("annualization_days"), 252)),
         "ts_standardize_window": max(5, _to_int(raw.get("ts_standardize_window"), 60)),
         "ts_quantile_lookback": max(10, _to_int(raw.get("ts_quantile_lookback"), 60)),
         "ts_signal_lags": ts_signal_lags,
@@ -1160,6 +1173,9 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     leakage_guard_mode = str(run_cfg.get("leakage_guard_mode", "strict")).strip().lower()
     if leakage_guard_mode not in {"strict", "warn", "off"}:
         errors.append("run.leakage_guard_mode: must be one of ['strict', 'warn', 'off'].")
+    stop_after = str(run_cfg.get("stop_after", "backtest")).strip().lower()
+    if stop_after not in {"factor", "research", "backtest"}:
+        errors.append("run.stop_after: must be one of ['factor', 'research', 'backtest'].")
     if "fail_on_autocorrect" in run_cfg and not isinstance(run_cfg.get("fail_on_autocorrect"), bool):
         errors.append("run.fail_on_autocorrect: must be boolean when provided.")
 
@@ -1264,6 +1280,11 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
             errors.append("research.ic_rolling_window: must be >= 5.")
     except Exception:
         errors.append("research.ic_rolling_window: must be an integer.")
+    try:
+        if int(research_cfg.get("annualization_days", 252)) < 1:
+            errors.append("research.annualization_days: must be >= 1.")
+    except Exception:
+        errors.append("research.annualization_days: must be an integer.")
 
     ts_signal_lags_raw = _as_list(research_cfg.get("ts_signal_lags"))
     if ts_signal_lags_raw:
@@ -2018,6 +2039,54 @@ def _run_optional_backtest(
     return summary_path
 
 
+def _write_stage_only_outputs(
+    out_dir: Path,
+    stage: str,
+    summary_row: dict[str, Any],
+    extra_tables: list[Path] | None = None,
+    config_payload: dict[str, Any] | None = None,
+) -> dict[str, Path]:
+    """在提前停止阶段时生成最小可审计输出。"""
+    assets_dir = out_dir / "assets"
+    tables_dir = out_dir / "tables"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    tables_dir.mkdir(parents=True, exist_ok=True)
+
+    summary = pd.DataFrame([summary_row])
+    summary_path = tables_dir / "summary.csv"
+    summary.to_csv(summary_path, index=False)
+
+    table_map: dict[str, list[Path]] = {"global": [summary_path]}
+    if extra_tables:
+        table_map["global"].extend(extra_tables)
+
+    index_html = render_report(
+        out_dir=out_dir,
+        summary=summary,
+        figure_map={},
+        table_map=table_map,
+    )
+    config_json = out_dir / "config.json"
+    config_json.write_text(
+        json.dumps(
+            {
+                "stop_after": stage,
+                **(config_payload or {}),
+            },
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return {
+        "index_html": index_html,
+        "summary_csv": summary_path,
+        "config_json": config_json,
+        "assets_dir": assets_dir,
+        "tables_dir": tables_dir,
+    }
+
+
 def run_from_config(
     config: str | Path | dict[str, Any],
     out_dir: str | Path,
@@ -2174,60 +2243,92 @@ def run_from_config(
     if panel.empty:
         raise RuntimeError("No data available after preprocessing.")
 
-    with warnings.catch_warnings(record=True) as _caught:
-        warnings.simplefilter("always")
+    stop_after = str(governance_cfg.get("stop_after", "backtest"))
+    backtest_summary_csv: Path | None = None
 
-        with timed_stage("research", timings=timings, logger_name="factorlab.workflows.config_runner"):
-            if scope_cfg["factor_scope"] == "cs":
-                wins = _as_dict(research_cfg.get("winsorize"))
-                neu = _as_dict(research_cfg.get("neutralize"))
-                neutral_mode = (
-                    str(neu.get("mode", "both")).strip().lower() if _to_bool(neu.get("enabled"), True) else "none"
-                )
-                if neutral_mode not in {"none", "size", "industry", "both"}:
-                    LOGGER.warning("Invalid research.neutralize.mode='%s'. Use 'both'.", neutral_mode)
-                    neutral_mode = "both"
-
-                cs_cfg = ResearchConfig(
-                    horizons=research_cfg["horizons"],
-                    quantiles=int(research_cfg["quantiles"]),
-                    ic_rolling_window=int(research_cfg["ic_rolling_window"]),
-                    standardization=scope_cfg["standardization"],  # type: ignore[arg-type]
-                    winsorize_enabled=_to_bool(wins.get("enabled"), True),
-                    winsorize_method=str(wins.get("method", "quantile")).strip().lower(),
-                    lower_q=_to_float(wins.get("lower_q"), 0.01),
-                    upper_q=_to_float(wins.get("upper_q"), 0.99),
-                    mad_scale=max(1.0, _to_float(wins.get("mad_scale"), 5.0)),
-                    missing_policy=str(research_cfg.get("missing_policy", "drop")),
-                    preprocess_steps=research_cfg.get("preprocess_steps") or ["winsorize", "standardize", "neutralize"],
-                    neutralization=NeutralizationConfig(mode=neutral_mode),  # type: ignore[arg-type]
-                )
-                outputs = FactorResearchPipeline(cs_cfg).run(panel=panel, factors=effective_factors, out_dir=out)
-            else:
-                ts_cfg = TSResearchConfig(
-                    horizons=research_cfg["horizons"],
-                    quantiles=int(research_cfg["quantiles"]),
-                    ic_rolling_window=int(research_cfg["ic_rolling_window"]),
-                    standardization=scope_cfg["standardization"],  # type: ignore[arg-type]
-                    ts_standardize_window=int(research_cfg["ts_standardize_window"]),
-                    ts_quantile_lookback=int(research_cfg["ts_quantile_lookback"]),
-                    ts_signal_lags=list(research_cfg["ts_signal_lags"]),
-                )
-                outputs = TimeSeriesFactorResearchPipeline(ts_cfg).run(
-                    panel=panel,
-                    factors=effective_factors,
-                    out_dir=out,
-                )
-
-        with timed_stage("backtest", timings=timings, logger_name="factorlab.workflows.config_runner"):
-            backtest_summary_csv = _run_optional_backtest(
-                panel=panel,
-                factors=effective_factors,
-                scope_cfg=scope_cfg,
-                back_cfg=back_cfg,
+    if stop_after == "factor":
+        with timed_stage("factor_stage_export", timings=timings, logger_name="factorlab.workflows.config_runner"):
+            stage_data_dir = out / "data"
+            stage_data_dir.mkdir(parents=True, exist_ok=True)
+            factor_stage_panel = stage_data_dir / "panel_after_factor.parquet"
+            panel.to_parquet(factor_stage_panel, index=False)
+            outputs = _write_stage_only_outputs(
                 out_dir=out,
+                stage="factor",
+                summary_row={
+                    "stage": "factor",
+                    "status": "stopped",
+                    "rows": int(len(panel)),
+                    "assets": int(panel["asset"].nunique()),
+                    "factors": ",".join(effective_factors),
+                },
+                extra_tables=[Path(x) for x in adapter_audit_tables.values()],
+                config_payload={
+                    "scope": scope_cfg,
+                    "research": research_cfg,
+                    "effective_factors": effective_factors,
+                },
             )
-        captured_warnings.extend(list(_caught))
+            outputs["factor_stage_panel"] = factor_stage_panel
+    else:
+        with warnings.catch_warnings(record=True) as _caught:
+            warnings.simplefilter("always")
+
+            with timed_stage("research", timings=timings, logger_name="factorlab.workflows.config_runner"):
+                if scope_cfg["factor_scope"] == "cs":
+                    wins = _as_dict(research_cfg.get("winsorize"))
+                    neu = _as_dict(research_cfg.get("neutralize"))
+                    neutral_mode = (
+                        str(neu.get("mode", "both")).strip().lower() if _to_bool(neu.get("enabled"), True) else "none"
+                    )
+                    if neutral_mode not in {"none", "size", "industry", "both"}:
+                        LOGGER.warning("Invalid research.neutralize.mode='%s'. Use 'both'.", neutral_mode)
+                        neutral_mode = "both"
+
+                    cs_cfg = ResearchConfig(
+                        horizons=research_cfg["horizons"],
+                        quantiles=int(research_cfg["quantiles"]),
+                        ic_rolling_window=int(research_cfg["ic_rolling_window"]),
+                        annualization_days=int(research_cfg["annualization_days"]),
+                        standardization=scope_cfg["standardization"],  # type: ignore[arg-type]
+                        winsorize_enabled=_to_bool(wins.get("enabled"), True),
+                        winsorize_method=str(wins.get("method", "quantile")).strip().lower(),
+                        lower_q=_to_float(wins.get("lower_q"), 0.01),
+                        upper_q=_to_float(wins.get("upper_q"), 0.99),
+                        mad_scale=max(1.0, _to_float(wins.get("mad_scale"), 5.0)),
+                        missing_policy=str(research_cfg.get("missing_policy", "drop")),
+                        preprocess_steps=research_cfg.get("preprocess_steps")
+                        or ["winsorize", "standardize", "neutralize"],
+                        neutralization=NeutralizationConfig(mode=neutral_mode),  # type: ignore[arg-type]
+                    )
+                    outputs = FactorResearchPipeline(cs_cfg).run(panel=panel, factors=effective_factors, out_dir=out)
+                else:
+                    ts_cfg = TSResearchConfig(
+                        horizons=research_cfg["horizons"],
+                        quantiles=int(research_cfg["quantiles"]),
+                        ic_rolling_window=int(research_cfg["ic_rolling_window"]),
+                        annualization_days=int(research_cfg["annualization_days"]),
+                        standardization=scope_cfg["standardization"],  # type: ignore[arg-type]
+                        ts_standardize_window=int(research_cfg["ts_standardize_window"]),
+                        ts_quantile_lookback=int(research_cfg["ts_quantile_lookback"]),
+                        ts_signal_lags=list(research_cfg["ts_signal_lags"]),
+                    )
+                    outputs = TimeSeriesFactorResearchPipeline(ts_cfg).run(
+                        panel=panel,
+                        factors=effective_factors,
+                        out_dir=out,
+                    )
+
+            if stop_after == "backtest":
+                with timed_stage("backtest", timings=timings, logger_name="factorlab.workflows.config_runner"):
+                    backtest_summary_csv = _run_optional_backtest(
+                        panel=panel,
+                        factors=effective_factors,
+                        scope_cfg=scope_cfg,
+                        back_cfg=back_cfg,
+                        out_dir=out,
+                    )
+            captured_warnings.extend(list(_caught))
 
     meta = {
         "scope": scope_cfg,

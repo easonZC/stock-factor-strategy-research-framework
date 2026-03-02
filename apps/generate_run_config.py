@@ -1,4 +1,4 @@
-"""生成 TS/CS 工作流运行配置模板。"""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -127,7 +127,7 @@ def build_template(scope: str, adapter: str, factors: list[str]) -> dict[str, An
     if adapter not in {"synthetic", "parquet", "csv", "sina", "stooq"}:
         raise ValueError("adapter must be one of: synthetic, parquet, csv, sina, stooq")
     if scope == "ts" and adapter == "sina":
-        # Sina 适配器天然输出面板，TS 场景可在运行时再筛到单资产。
+        # 新浪适配器天然输出面板，时序场景可在运行时再筛到单资产。
         pass
 
     factor_list = factors if factors else (["momentum_20", "volatility_20"] if scope == "ts" else [

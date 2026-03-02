@@ -23,6 +23,7 @@ research:
   horizons: [1, 5, 10, 20]
   quantiles: 5
   ic_rolling_window: 30
+  annualization_days: 252
   ts_standardize_window: 60
   ts_quantile_lookback: 80
   ts_signal_lags: [0, 1, 2, 5, 10]

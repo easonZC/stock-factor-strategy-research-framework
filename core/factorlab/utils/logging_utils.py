@@ -1,4 +1,4 @@
-﻿"""Small logging utility with optional file output and level control."""
+﻿"""日志工具：支持级别控制与可选文件输出。"""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def configure_logging(
     log_file: str | Path | None = None,
     force: bool = False,
 ) -> logging.Logger:
-    """Configure root `factorlab` logger handlers."""
+    """中文说明。"""
     root = logging.getLogger("factorlab")
     if force:
         for h in list(root.handlers):
@@ -50,7 +50,7 @@ def configure_logging(
 
 
 def get_logger(name: str = "factorlab") -> logging.Logger:
-    """Return a configured logger."""
+    """中文说明。"""
     root = configure_logging()
     if name == "factorlab":
         return root

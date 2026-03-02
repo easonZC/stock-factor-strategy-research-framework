@@ -1,4 +1,4 @@
-"""Tests for factor plugin auto-discovery and config-run integration."""
+"""模块说明。"""
 
 from __future__ import annotations
 

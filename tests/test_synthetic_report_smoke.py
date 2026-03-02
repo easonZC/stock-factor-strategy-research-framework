@@ -1,4 +1,4 @@
-﻿"""Smoke test for synthetic end-to-end report generation."""
+﻿"""合成数据端到端报告冒烟测试。"""
 
 from __future__ import annotations
 

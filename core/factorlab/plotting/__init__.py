@@ -1,4 +1,4 @@
-﻿"""Plotting package exports."""
+﻿"""绘图模块导出。"""
 
 from .charts import (
     plot_corr_heatmap,

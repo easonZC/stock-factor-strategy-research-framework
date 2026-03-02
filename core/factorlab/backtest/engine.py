@@ -1,4 +1,4 @@
-"""Backtest engine for long-only and long-short weight streams."""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from factorlab.config import BacktestConfig
 
 @dataclass(slots=True)
 class BacktestResult:
-    """Container for backtest outputs."""
+    """中文说明。"""
 
     daily: pd.DataFrame
     metrics: pd.DataFrame
@@ -58,7 +58,7 @@ def _scale_gross(row: pd.Series, target_gross: float, max_gross_exposure: float 
 
 
 def _finalize_caps(row: pd.Series, config: BacktestConfig) -> pd.Series:
-    """Final cap pass so scaling cannot push names back above constraints."""
+    """中文说明。"""
     out = _clip_abs_weight(row, max_abs_weight=config.max_abs_weight)
     out = _enforce_net_limit(out, max_net_exposure=config.max_net_exposure)
     if config.max_gross_exposure is not None:
@@ -180,7 +180,7 @@ def _alpha_beta(returns: pd.Series, benchmark: pd.Series, ann_days: int) -> tupl
 
 
 def run_backtest(panel: pd.DataFrame, weights: pd.DataFrame, config: BacktestConfig) -> BacktestResult:
-    """Run a daily backtest with turnover-based costs and configurable constraints."""
+    """中文说明。"""
     df = panel[["date", "asset", "close"]].copy().sort_values(["asset", "date"])
     df["asset_ret"] = df.groupby("asset")["close"].pct_change()
     ret_wide = df.pivot(index="date", columns="asset", values="asset_ret").sort_index().fillna(0.0)
@@ -190,7 +190,7 @@ def run_backtest(panel: pd.DataFrame, weights: pd.DataFrame, config: BacktestCon
     w_wide = w_wide.reindex(ret_wide.index).fillna(0.0)
     w_wide = _apply_weight_constraints(w_wide, panel=panel, config=config)
 
-    # Signal at t is executed from t+1 return to avoid look-ahead.
+    # 当日信号从下一交易日收益开始执行，避免前视偏差。
     w_exec = w_wide.shift(1).fillna(0.0)
     gross_ret = (w_exec * ret_wide).sum(axis=1)
 

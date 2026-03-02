@@ -1,4 +1,4 @@
-"""Smoke tests for reusable model-factor benchmark workflow."""
+"""模块说明。"""
 
 from __future__ import annotations
 

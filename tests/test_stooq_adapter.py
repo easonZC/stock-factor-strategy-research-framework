@@ -1,4 +1,4 @@
-"""Adapter behavior tests for public Stooq ingestion."""
+"""模块说明。"""
 
 from __future__ import annotations
 

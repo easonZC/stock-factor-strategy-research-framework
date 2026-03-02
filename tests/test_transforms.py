@@ -1,4 +1,4 @@
-﻿"""Preprocessing transform tests."""
+﻿"""预处理变换测试。"""
 
 from __future__ import annotations
 

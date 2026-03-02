@@ -1,4 +1,4 @@
-﻿"""Plot style presets for consistent report visuals."""
+﻿"""统一报告视觉风格的绘图预设。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 
 def apply_style() -> None:
-    """Apply a consistent plotting style across report figures."""
+    """中文说明。"""
     plt.style.use("seaborn-v0_8-whitegrid")
     plt.rcParams.update(
         {

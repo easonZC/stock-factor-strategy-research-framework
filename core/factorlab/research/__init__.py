@@ -1,4 +1,4 @@
-"""Research package exports."""
+"""模块说明。"""
 
 from .forward_returns import add_forward_returns
 from .pipeline import FactorResearchPipeline

@@ -1,4 +1,4 @@
-"""报告渲染安全性测试。"""
+"""模块说明。"""
 
 from __future__ import annotations
 

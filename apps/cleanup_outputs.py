@@ -1,4 +1,4 @@
-"""按留存策略清理 outputs 历史运行产物。"""
+"""模块说明。"""
 
 from __future__ import annotations
 

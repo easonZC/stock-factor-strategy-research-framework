@@ -1,4 +1,4 @@
-"""Smoke tests for config template generator CLI."""
+"""模块说明。"""
 
 from __future__ import annotations
 

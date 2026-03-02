@@ -1,5 +1,6 @@
-"""Utility helpers used across the FactorLab package."""
+"""模块说明。"""
 
+from .date_indexer import DateFrameIndexer
 from .logging_utils import configure_logging, get_logger
 from .path_utils import ensure_within, safe_slug
 from .stats import safe_corr
@@ -8,6 +9,7 @@ from .warnings_utils import summarize_captured_warnings
 
 __all__ = [
     "configure_logging",
+    "DateFrameIndexer",
     "ensure_within",
     "get_logger",
     "safe_slug",

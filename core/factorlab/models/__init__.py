@@ -1,4 +1,4 @@
-﻿"""Model package exports."""
+﻿"""模型模块导出。"""
 
 from .registry import (
     ModelRegistry,

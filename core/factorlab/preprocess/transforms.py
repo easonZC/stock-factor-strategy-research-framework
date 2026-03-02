@@ -1,4 +1,4 @@
-﻿"""Leakage-safe preprocessing transforms for cross-sectional factor research."""
+﻿"""截面因子研究的无泄露预处理变换。"""
 
 from __future__ import annotations
 
@@ -9,14 +9,14 @@ from factorlab.config import CSStandardizeMode, NeutralizationConfig
 
 
 def winsorize_series_quantile(series: pd.Series, lower_q: float = 0.01, upper_q: float = 0.99) -> pd.Series:
-    """Clip by empirical quantiles."""
+    """中文说明。"""
     lo = series.quantile(lower_q)
     hi = series.quantile(upper_q)
     return series.clip(lower=lo, upper=hi)
 
 
 def winsorize_series_mad(series: pd.Series, scale: float = 5.0) -> pd.Series:
-    """Clip by median +/- scale * MAD."""
+    """中文说明。"""
     med = series.median()
     mad = (series - med).abs().median()
     if pd.isna(mad) or mad == 0:
@@ -34,7 +34,7 @@ def apply_winsorize(
     upper_q: float = 0.99,
     mad_scale: float = 5.0,
 ) -> pd.Series:
-    """Apply winsorization cross-sectionally by date."""
+    """中文说明。"""
     if method not in {"quantile", "mad"}:
         raise ValueError("winsorize method must be one of: quantile, mad")
 
@@ -47,7 +47,7 @@ def apply_winsorize(
 
 
 def cs_zscore(df: pd.DataFrame, col: str) -> pd.Series:
-    """Cross-sectional z-score per date."""
+    """中文说明。"""
     grouped = df.groupby("date")[col]
     mu = grouped.transform("mean")
     sigma = grouped.transform("std").replace(0, np.nan)
@@ -55,12 +55,12 @@ def cs_zscore(df: pd.DataFrame, col: str) -> pd.Series:
 
 
 def cs_rank(df: pd.DataFrame, col: str) -> pd.Series:
-    """Cross-sectional percentile rank per date."""
+    """中文说明。"""
     return df.groupby("date")[col].rank(pct=True)
 
 
 def cs_robust_zscore(df: pd.DataFrame, col: str, mad_scale: float = 1.4826) -> pd.Series:
-    """Cross-sectional robust z-score per date using median/MAD."""
+    """中文说明。"""
     grouped = df.groupby("date")[col]
     median = grouped.transform("median")
     mad = grouped.transform(lambda s: (s - s.median()).abs().median())
@@ -69,7 +69,7 @@ def cs_robust_zscore(df: pd.DataFrame, col: str, mad_scale: float = 1.4826) -> p
 
 
 def apply_cs_standardize(df: pd.DataFrame, col: str, method: CSStandardizeMode) -> pd.Series:
-    """Apply configurable cross-sectional standardization per date."""
+    """中文说明。"""
     if method == "none":
         return df[col].astype(float)
     if method == "cs_rank":
@@ -82,7 +82,7 @@ def apply_cs_standardize(df: pd.DataFrame, col: str, method: CSStandardizeMode) 
 
 
 def ts_rolling_zscore(df: pd.DataFrame, col: str, window: int = 20) -> pd.Series:
-    """Time-series rolling z-score per asset."""
+    """中文说明。"""
     def _roll(s: pd.Series) -> pd.Series:
         mu = s.rolling(window=window, min_periods=max(5, window // 4)).mean()
         sigma = s.rolling(window=window, min_periods=max(5, window // 4)).std().replace(0, np.nan)
@@ -92,14 +92,14 @@ def ts_rolling_zscore(df: pd.DataFrame, col: str, window: int = 20) -> pd.Series
 
 
 def handle_missing(df: pd.DataFrame, cols: list[str], policy: str = "drop") -> pd.DataFrame:
-    """Handle missing values with explicit policy.
+    """按显式策略处理缺失值。
 
-    Policies:
-    - drop: drop rows with NA in `cols`.
-    - fill_zero: fill NA in `cols` with 0.
-    - ffill_by_asset: sort by (asset, date), forward-fill within each asset, then drop residual NA.
-    - cs_median_by_date: fill NA in each column by same-date cross-sectional median, then drop residual NA.
-    - keep: keep as-is.
+    支持策略：
+    - drop: 删除 `cols` 存在缺失的行。
+    - fill_zero: 将 `cols` 缺失值填充为 0。
+    - ffill_by_asset: 按 (asset, date) 排序后逐资产前向填充，再删除残余缺失。
+    - cs_median_by_date: 按同日截面中位数填充，再删除残余缺失。
+    - keep: 保持原样不处理。
     """
     out = df.copy()
     policy_norm = str(policy).strip().lower()
@@ -138,11 +138,11 @@ def neutralize_factor(
     factor_col: str,
     config: NeutralizationConfig,
 ) -> pd.Series:
-    """Cross-sectional neutralization by date (size and/or industry).
+    """逐日截面中性化（规模/行业/二者）。
 
-    Strict no-lookahead:
-    - Uses only same-date cross-sectional exposures (`mkt_cap`, `industry`)
-    - Never uses future rows when fitting residualization regressions
+    严格无前视：
+    - 仅使用同日截面暴露（`mkt_cap`、`industry`）。
+    - 拟合残差回归时不引用未来日期样本。
     """
 
     mode = config.mode

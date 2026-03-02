@@ -1,4 +1,4 @@
-"""Preprocess-transform factory and plugin registration helpers."""
+"""模块说明。"""
 
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ def _cs_zscore_transform(panel: pd.DataFrame, factor_col: str) -> pd.Series:
 
 
 def default_transform_registry() -> dict[str, TransformFn]:
-    """Built-in preprocess-transform callables."""
+    """中文说明。"""
     return {
         "clip": _clip_transform,
         "signed_log1p": _signed_log1p_transform,
@@ -162,7 +162,7 @@ def _merge_registry(
 
 
 def discover_transform_registry(plugin_dirs: list[str | Path], on_error: str = "raise") -> dict[str, TransformFn]:
-    """Discover transform callables from python files under configured plugin directories."""
+    """中文说明。"""
     reg: dict[str, TransformFn] = {}
     for raw_dir in plugin_dirs:
         path = Path(raw_dir).expanduser()
@@ -235,7 +235,7 @@ def _resolve_plugin_entry(entry: dict[str, Any]) -> tuple[str, TransformFn]:
 
 
 def load_transform_plugins(plugin_specs: list[Any], on_error: str = "raise") -> dict[str, TransformFn]:
-    """Load transform plugins by module/function specifications."""
+    """中文说明。"""
     reg: dict[str, TransformFn] = {}
     for entry in plugin_specs:
         try:
@@ -262,7 +262,7 @@ def build_transform_registry(
     on_plugin_error: str = "raise",
     include_defaults: bool = True,
 ) -> dict[str, TransformFn]:
-    """Build transform registry from built-ins plus optional plugin discovery/loading."""
+    """中文说明。"""
     registry = default_transform_registry() if include_defaults else {}
     if plugin_dirs:
         registry = _merge_registry(

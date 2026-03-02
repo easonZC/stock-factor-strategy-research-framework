@@ -1,4 +1,4 @@
-﻿"""Factor interface definitions."""
+﻿"""因子接口定义。"""
 
 from __future__ import annotations
 
@@ -10,18 +10,18 @@ import pandas as pd
 
 @dataclass(slots=True)
 class Factor(ABC):
-    """Abstract factor interface."""
+    """中文说明。"""
 
     name: str
 
     @abstractmethod
     def compute(self, panel: pd.DataFrame) -> pd.Series:
-        """Return factor values aligned to panel index."""
+        """中文说明。"""
 
 
 @dataclass(slots=True)
 class PanelFactorResult:
-    """Container for a factor column generated on a panel."""
+    """中文说明。"""
 
     name: str
     values: pd.Series

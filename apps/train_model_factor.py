@@ -1,4 +1,4 @@
-﻿"""Train and persist a model-based factor on synthetic data."""
+﻿"""在合成数据上训练并持久化模型因子。"""
 
 from __future__ import annotations
 

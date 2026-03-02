@@ -1,4 +1,4 @@
-﻿"""Factor package exports."""
+﻿"""因子模块导出。"""
 
 from .base import Factor
 from .combiner import apply_factor_combinations, normalize_factor_combinations

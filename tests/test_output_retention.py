@@ -1,4 +1,4 @@
-"""输出目录留存清理测试。"""
+"""模块说明。"""
 
 from __future__ import annotations
 

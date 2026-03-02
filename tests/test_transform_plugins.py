@@ -1,4 +1,4 @@
-"""Tests for preprocess-transform plugin discovery and config integration."""
+"""模块说明。"""
 
 from __future__ import annotations
 

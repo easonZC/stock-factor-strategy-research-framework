@@ -1,4 +1,4 @@
-"""Tests for backtest-engine risk constraints and benchmark output."""
+"""模块说明。"""
 
 from __future__ import annotations
 

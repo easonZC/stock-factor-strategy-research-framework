@@ -1,4 +1,4 @@
-"""Run a synthetic strategy backtest (TopK + LongShort)."""
+"""模块说明。"""
 
 from __future__ import annotations
 

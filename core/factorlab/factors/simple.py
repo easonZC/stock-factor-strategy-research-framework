@@ -1,4 +1,4 @@
-﻿"""Built-in example factors for demo and baseline research."""
+﻿"""用于演示与基线研究的内置示例因子。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from factorlab.factors.base import Factor
 
 @dataclass(slots=True)
 class MomentumFactor(Factor):
-    """Price momentum over a lookback window."""
+    """中文说明。"""
 
     lookback: int = 20
 
@@ -24,7 +24,7 @@ class MomentumFactor(Factor):
 
 @dataclass(slots=True)
 class VolatilityFactor(Factor):
-    """Rolling return volatility factor."""
+    """中文说明。"""
 
     window: int = 20
 
@@ -37,7 +37,7 @@ class VolatilityFactor(Factor):
 
 @dataclass(slots=True)
 class LiquidityShockFactor(Factor):
-    """Volume-vs-history shock proxy factor."""
+    """中文说明。"""
 
     window: int = 20
 
@@ -51,7 +51,7 @@ class LiquidityShockFactor(Factor):
 
 @dataclass(slots=True)
 class SizeFactor(Factor):
-    """Log market-cap factor (small-cap tilt as negative sign)."""
+    """中文说明。"""
 
     def compute(self, panel: pd.DataFrame) -> pd.Series:
         return -np.log1p(panel["mkt_cap"].astype(float))
