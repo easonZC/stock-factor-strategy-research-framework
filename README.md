@@ -124,6 +124,16 @@ python apps/run_model_factor_benchmark.py \
   --out outputs/research/model_factor/benchmark
 ```
 
+With model plugins:
+```bash
+python apps/run_model_factor_benchmark.py \
+  --panel data/panel.parquet \
+  --models ridge,my_custom_model \
+  --model-auto-discover \
+  --model-plugin-dir plugins/models \
+  --out outputs/research/model_factor/benchmark_plugins
+```
+
 ### Generate config template (recommended)
 ```bash
 python apps/generate_run_config.py --scope cs --adapter synthetic --out configs/generated_cs.yaml
@@ -156,6 +166,10 @@ python apps/run_from_config.py \
 - `factor.auto_discover` + `factor.plugin_dirs`: auto-discover custom `Factor` classes from plugin folders
 - `factor.plugins`: load plugin modules/class paths explicitly
 - `factor.plugin_on_error`: `raise` or `warn_skip` for plugin load conflicts/errors
+- model plugins (`run_model_factor_benchmark`):
+  - `--model-auto-discover` + `--model-plugin-dir`
+  - `--model-plugin`
+  - `--model-plugin-on-error`
 - `research.missing_policy`: `drop|fill_zero|ffill_by_asset|cs_median_by_date|keep`
 - `research.preprocess_steps`: ordered list from `winsorize|standardize|neutralize`
 - `run.config_mode`: `strict|warn|compat` (strict blocks auto-corrections; warn records and continues)

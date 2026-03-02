@@ -70,6 +70,31 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional dir containing <model>.json parameter grids (list[dict])",
     )
+    parser.add_argument(
+        "--model-auto-discover",
+        action="store_true",
+        help="Auto-discover model plugins from --model-plugin-dir.",
+    )
+    parser.add_argument(
+        "--model-plugin-dir",
+        dest="model_plugin_dirs",
+        action="append",
+        default=[],
+        help="Model plugin directory (repeatable).",
+    )
+    parser.add_argument(
+        "--model-plugin",
+        dest="model_plugins",
+        action="append",
+        default=[],
+        help="Model plugin module/spec (repeatable).",
+    )
+    parser.add_argument(
+        "--model-plugin-on-error",
+        choices=["raise", "warn_skip"],
+        default="raise",
+        help="Model plugin load conflict/error behavior.",
+    )
 
     parser.add_argument("--horizons", nargs="+", default=[1, 5, 10, 20])
     parser.add_argument("--neutralize", default="both")
@@ -124,6 +149,10 @@ def main() -> None:
         scoring_metric=args.scoring_metric,
         evaluation_axis=args.evaluation_axis,
         model_param_grid_dir=args.model_param_grid_dir,
+        model_auto_discover=args.model_auto_discover,
+        model_plugin_dirs=args.model_plugin_dirs,
+        model_plugins=args.model_plugins,
+        model_plugin_on_error=args.model_plugin_on_error,
         horizons=args.horizons,
         neutralize=args.neutralize,
         winsorize=args.winsorize,

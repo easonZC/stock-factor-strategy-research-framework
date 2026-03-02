@@ -42,6 +42,8 @@ MODEL_ALIASES = {
     "neural_network": "mlp",
     "lgbm": "lgbm",
     "lightgbm": "lgbm",
+    "xgb": "xgb",
+    "xgboost": "xgb",
 }
 
 
@@ -67,6 +69,10 @@ class ModelFactorBenchmarkConfig:
     scoring_metric: Literal["rank_ic", "mse"] = "rank_ic"
     evaluation_axis: Literal["cross_section", "time"] = "cross_section"
     model_param_grid_dir: str | None = None
+    model_auto_discover: bool = False
+    model_plugin_dirs: list[str] | str | None = field(default_factory=list)
+    model_plugins: list[Any] | str | None = field(default_factory=list)
+    model_plugin_on_error: Literal["raise", "warn_skip"] = "raise"
 
     horizons: list[int] | str | None = field(default_factory=lambda: list(DEFAULT_HORIZONS))
     neutralize: NeutralizeMode = "both"
@@ -152,6 +158,32 @@ def _coerce_name_list(raw: list[str] | str | None, default: list[str]) -> list[s
     return cleaned if cleaned else list(default)
 
 
+def _coerce_text_list(raw: list[str] | str | None) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        return [x.strip() for x in raw.split(",") if x.strip()]
+    return [str(x).strip() for x in raw if str(x).strip()]
+
+
+def _coerce_plugin_specs(raw: list[Any] | str | None) -> list[Any]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        return [x.strip() for x in raw.split(",") if x.strip()]
+    out: list[Any] = []
+    for item in raw:
+        if item is None:
+            continue
+        if isinstance(item, str):
+            text = item.strip()
+            if text:
+                out.append(text)
+            continue
+        out.append(item)
+    return out
+
+
 def _coerce_int_list(raw: list[int] | str | None, default: list[int], min_value: int = 1) -> list[int]:
     if raw is None:
         return list(default)
@@ -193,14 +225,15 @@ def _coerce_choice(raw: str, allowed: set[str], default: str, field_name: str) -
 
 def _resolve_models(raw_models: list[str] | str | None) -> list[str]:
     parsed = _coerce_name_list(raw_models, default=DEFAULT_MODELS)
+    available = set(ModelRegistry.available_models())
     resolved: list[str] = []
     for original in parsed:
         alias = MODEL_ALIASES.get(str(original).strip().lower(), str(original).strip().lower())
-        if alias not in ModelRegistry._defaults:
+        if alias not in available:
             LOGGER.warning(
                 "Skip unsupported model '%s'. Available models: %s",
                 original,
-                sorted(ModelRegistry._defaults),
+                sorted(available),
             )
             continue
         if alias not in resolved:
@@ -318,6 +351,23 @@ def run_model_factor_benchmark(
     out.mkdir(parents=True, exist_ok=True)
     timings: dict[str, float] = {}
     captured_warnings: list[Any] = []
+
+    model_plugin_dirs = _coerce_text_list(config.model_plugin_dirs)
+    model_plugins = _coerce_plugin_specs(config.model_plugins)
+    model_plugin_on_error = _coerce_choice(
+        raw=str(config.model_plugin_on_error),
+        allowed={"raise", "warn_skip"},
+        default="raise",
+        field_name="model_plugin_on_error",
+    )
+    with timed_stage("build_model_registry", timings=timings, logger_name="factorlab.workflows.model_factor_benchmark"):
+        registry = ModelRegistry.configure_plugins(
+            plugin_dirs=model_plugin_dirs if bool(config.model_auto_discover) else [],
+            plugin_specs=model_plugins,
+            on_plugin_error=model_plugin_on_error,
+            include_defaults=True,
+        )
+    available_models = sorted(registry.keys())
 
     models = _resolve_models(config.models)
     feature_cols = _coerce_name_list(config.feature_cols, default=DEFAULT_FEATURE_COLS)
@@ -524,6 +574,14 @@ def run_model_factor_benchmark(
         "panel_path": str(panel_path),
         "config": config,
         "resolved_models": models,
+        "model_plugin_config": {
+            "auto_discover": bool(config.model_auto_discover),
+            "plugin_dirs": model_plugin_dirs,
+            "plugins": model_plugins,
+            "plugin_on_error": model_plugin_on_error,
+            "registry_size": len(available_models),
+            "registry_models": available_models,
+        },
         "resolved_feature_cols": feature_cols,
         "resolved_horizons": horizons,
         "report_factors": report_factors,
