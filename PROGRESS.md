@@ -53,6 +53,82 @@ For every complete run, append one new entry at the top of `Run History` with:
 
 ## Run History
 
+### Run 2026-03-01-014
+- Time: 2026-03-01 (America/Los_Angeles)
+- Goal: Execute the two remaining improvements:
+  - warning governance (reduce noisy warnings without hiding actionable issues),
+  - pluginized data-adapter interface for extensible external data integration.
+- Changes:
+  - Warning governance:
+    - Added warning-safe correlation helper:
+      - `core/factorlab/utils/stats.py` (`safe_corr`)
+    - Replaced fragile correlation calls in:
+      - `core/factorlab/research/statistics.py`
+      - `core/factorlab/research/diagnostics.py`
+      - `core/factorlab/research/advanced_metrics.py`
+      - `core/factorlab/research/walkforward.py`
+      - `core/factorlab/models/trainer.py`
+    - Added warning audit utility:
+      - `core/factorlab/utils/warnings_utils.py`
+      - classifies warnings into `benign` vs `actionable`, logs actionable samples only.
+    - Integrated warning summary into workflow metadata:
+      - `core/factorlab/workflows/config_runner.py`
+      - `core/factorlab/workflows/model_factor_benchmark.py`
+      - `run_meta.json` now includes `warning_summary`.
+    - Stabilized ridge default to reduce ill-conditioned solver noise:
+      - `core/factorlab/models/registry.py` (`ridge` uses `solver='svd'`).
+  - Data adapter plugin interface:
+    - Added adapter plugin factory:
+      - `core/factorlab/data/factory.py`
+      - supports:
+        - default built-ins (`sina`, `stooq`)
+        - plugin directory discovery
+        - explicit plugin spec loading
+        - module registry exports (`DATA_ADAPTER_REGISTRY` / `get_data_adapter_registry`)
+        - auto-detected `prepare_<name>_panel(config)` functions
+    - Exported adapter factory APIs:
+      - `core/factorlab/data/__init__.py`
+    - Integrated adapter plugins into config-run data flow:
+      - `core/factorlab/workflows/config_runner.py`
+      - new data config knobs:
+        - `adapter_auto_discover`
+        - `adapter_plugin_dirs`
+        - `adapter_plugins`
+        - `adapter_plugin_on_error`
+      - schema validation supports custom adapters when plugin config exists.
+    - Extended data preparation CLI to support plugin adapters:
+      - `apps/prepare_data.py`
+      - adds `--adapter-plugin-dir`, `--adapter-plugin`, `--adapter-plugin-on-error`.
+    - Updated config template generator defaults:
+      - `apps/generate_run_config.py` includes adapter plugin config placeholders.
+  - Utility exports:
+    - `core/factorlab/utils/__init__.py` exports `safe_corr` and warning-summary helper.
+  - Tests:
+    - Added:
+      - `tests/test_data_adapter_plugins.py`
+    - Updated:
+      - `tests/test_config_schema_validation.py`
+      - `tests/test_run_from_config.py`
+      - `tests/test_model_factor_benchmark_workflow.py`
+  - Docs:
+    - `README.md` updated with data-adapter plugin usage and warning-summary notes.
+- Validation commands:
+  - `python3 -m ruff check core apps tests`
+  - `python3 -m pytest -q`
+- Validation summary:
+  - Lint passed.
+  - Tests passed: `46 passed`.
+  - High-frequency warning noise removed from test output; no warnings reported in this run.
+- Git actions:
+  - Working branch: `feat/ops-logging-and-stooq-20260301`
+  - Commit: `bffdb6f` (`feat(data): add adapter plugin interface and warning governance`)
+  - Push succeeded: `git push` (branch updated on origin)
+  - PR updated: `https://github.com/easonZC/stock-factor-strategy-research-framework/pull/7`
+- Next run direction:
+  - Add optional adapter-specific config schema fragments (per-adapter required fields).
+  - Add structured benchmark of adapter load performance in `run_meta`.
+  - Add public adapter plugin templates under `examples/plugins/data_adapters/`.
+
 ### Run 2026-03-01-013
 - Time: 2026-03-01 (America/Los_Angeles)
 - Goal: Push phase 5 and 6 forward with engineering quality upgrades and external/public data integration.
