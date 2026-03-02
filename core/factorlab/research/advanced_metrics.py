@@ -15,6 +15,20 @@ def _max_drawdown_from_returns(returns: pd.Series) -> float:
     return float(dd.min())
 
 
+def _sortino_ratio(returns: pd.Series, annualization_days: int = 252) -> float:
+    if returns.empty:
+        return float("nan")
+    s = returns.dropna().astype(float)
+    if s.empty:
+        return float("nan")
+    downside = s[s < 0]
+    downside_std = float(np.sqrt(np.mean(np.square(downside.values)))) if not downside.empty else 0.0
+    if downside_std <= 0:
+        return float("nan")
+    mean_ret = float(s.mean())
+    return float((mean_ret / downside_std) * np.sqrt(annualization_days))
+
+
 def summarize_quantile_profile(
     q_daily: pd.DataFrame,
     annualization_days: int = 252,
@@ -43,6 +57,8 @@ def summarize_quantile_profile(
         ann_ret = float((1.0 + mean_ret) ** annualization_days - 1.0)
         ann_vol = float(std_ret * np.sqrt(annualization_days))
         sharpe = float((mean_ret / std_ret) * np.sqrt(annualization_days)) if std_ret > 0 else np.nan
+        mdd = _max_drawdown_from_returns(s)
+        calmar = float(ann_ret / abs(mdd)) if np.isfinite(mdd) and mdd < 0 else np.nan
         rows.append(
             {
                 "bucket": col,
@@ -51,8 +67,10 @@ def summarize_quantile_profile(
                 "ann_ret": ann_ret,
                 "ann_vol": ann_vol,
                 "sharpe": sharpe,
+                "sortino": _sortino_ratio(s, annualization_days=annualization_days),
+                "calmar": calmar,
                 "hit_rate": float((s > 0).mean()),
-                "max_drawdown": _max_drawdown_from_returns(s),
+                "max_drawdown": mdd,
             }
         )
     return pd.DataFrame(rows)

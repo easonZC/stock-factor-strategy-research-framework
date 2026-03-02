@@ -26,6 +26,7 @@ FactorLab v2 separates orchestration from reusable research logic:
 4. Research and reporting:
 - CS pipeline: `factorlab.research.FactorResearchPipeline`
 - TS pipeline: `factorlab.research.TimeSeriesFactorResearchPipeline`
+- TS signal lag diagnostics: `tables/factors/<factor>/ts/signal_lag_ic.csv` + `assets/factors/<factor>/ts/signal_lag_ic.png`
 - OOP renderer: `factorlab.research.report.ReportRenderer`
 - Outputs:
   - `index.html`
@@ -50,3 +51,4 @@ FactorLab v2 separates orchestration from reusable research logic:
 - `standardization`: scope-aware choice
 - optional universe filter + optional backtest
 - run metadata/manifests for reproducibility
+- config overrides support `= / += / -=` operators (see `docs/config_overrides.md`)

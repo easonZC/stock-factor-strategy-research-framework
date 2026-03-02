@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 from factorlab.workflows import apply_config_override, compose_run_config, deep_merge_dict
@@ -29,6 +30,39 @@ def test_apply_config_override_parses_value_types() -> None:
     assert out["run"]["factor_scope"] == "cs"
 
 
+def test_apply_config_override_supports_list_append_and_remove() -> None:
+    cfg = {"research": {"horizons": [1, 5], "tags": ["base"]}}
+    out = apply_config_override(cfg, "research.horizons+=10")
+    out = apply_config_override(out, "research.horizons+=[20,30]")
+    out = apply_config_override(out, "research.tags+=fast")
+    out = apply_config_override(out, "research.horizons-=5")
+    out = apply_config_override(out, "research.horizons-=[20,999]")
+    assert out["research"]["horizons"] == [1, 10, 30]
+    assert out["research"]["tags"] == ["base", "fast"]
+
+
+def test_apply_config_override_supports_dict_merge_and_remove() -> None:
+    cfg = {"research": {"winsorize": {"enabled": True, "method": "quantile"}}}
+    out = apply_config_override(cfg, "research.winsorize+={lower_q: 0.02, upper_q: 0.98}")
+    out = apply_config_override(out, "research.winsorize-=method")
+    assert out["research"]["winsorize"]["enabled"] is True
+    assert out["research"]["winsorize"]["lower_q"] == 0.02
+    assert out["research"]["winsorize"]["upper_q"] == 0.98
+    assert "method" not in out["research"]["winsorize"]
+
+
+def test_apply_config_override_append_to_missing_path_creates_list() -> None:
+    cfg = {"research": {}}
+    out = apply_config_override(cfg, "research.extra_factors+=momentum_60")
+    assert out["research"]["extra_factors"] == ["momentum_60"]
+
+
+def test_apply_config_override_remove_missing_path_raises() -> None:
+    cfg = {"research": {}}
+    with pytest.raises(ValueError, match="target path does not exist"):
+        apply_config_override(cfg, "research.horizons-=5")
+
+
 def test_compose_run_config_merge_and_override(tmp_path: Path) -> None:
     base = {
         "run": {"factor_scope": "cs", "eval_axis": "cross_section", "standardization": "cs_zscore"},
@@ -50,4 +84,3 @@ def test_compose_run_config_merge_and_override(tmp_path: Path) -> None:
     assert out["run"]["standardization"] == "cs_rank"
     assert out["research"]["quantiles"] == 10
     assert out["research"]["horizons"] == [1, 5, 10, 20]
-

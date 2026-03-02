@@ -25,6 +25,7 @@ research:
   ic_rolling_window: 30
   ts_standardize_window: 60
   ts_quantile_lookback: 80
+  ts_signal_lags: [0, 1, 2, 5, 10]
   transform_auto_discover: false
   transform_plugin_dirs: []
   transform_plugins: []

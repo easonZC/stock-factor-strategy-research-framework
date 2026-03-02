@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 import warnings
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -401,6 +402,13 @@ def _collect_normalization_autocorrections(
         research_cfg["ts_quantile_lookback"],
         "bounded_min_value",
     )
+    _collect_autocorrection(
+        corrections,
+        cfg,
+        ("research", "ts_signal_lags"),
+        research_cfg["ts_signal_lags"],
+        "invalid_values_removed_or_defaulted",
+    )
     if _is_key_present(cfg, ("research", "preprocess_steps")):
         _collect_autocorrection(
             corrections,
@@ -773,6 +781,21 @@ def _normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str
     if scope == "cs" and not preprocess_steps:
         preprocess_steps = default_steps.copy()
 
+    ts_signal_lags: list[int] = []
+    for x in _as_list(raw.get("ts_signal_lags")):
+        try:
+            v = int(x)
+        except Exception:
+            continue
+        if v < 0:
+            continue
+        ts_signal_lags.append(v)
+    if not ts_signal_lags:
+        ts_signal_lags = [0, 1, 2, 5, 10]
+    ts_signal_lags = sorted(set(ts_signal_lags))
+    if 0 not in ts_signal_lags:
+        ts_signal_lags = [0, *ts_signal_lags]
+
     transform_plugin_dirs = [
         str(x).strip() for x in _as_list(raw.get("transform_plugin_dirs")) if str(x).strip()
     ]
@@ -795,6 +818,7 @@ def _normalize_research_cfg(cfg: dict[str, Any], scope: FactorScope) -> dict[str
         "ic_rolling_window": max(5, _to_int(raw.get("ic_rolling_window"), 20)),
         "ts_standardize_window": max(5, _to_int(raw.get("ts_standardize_window"), 60)),
         "ts_quantile_lookback": max(10, _to_int(raw.get("ts_quantile_lookback"), 60)),
+        "ts_signal_lags": ts_signal_lags,
         "missing_policy": missing_policy,
         "preprocess_steps": preprocess_steps,
         "transform_auto_discover": transform_auto_discover,
@@ -905,12 +929,21 @@ def deep_merge_dict(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, 
     return out
 
 
-def apply_config_override(cfg: dict[str, Any], override: str) -> dict[str, Any]:
-    """应用单条 `a.b.c=value` 覆盖项并返回新配置。"""
+def _parse_override(override: str) -> tuple[list[str], str, Any]:
     text = str(override).strip()
-    if "=" not in text:
-        raise ValueError(f"Invalid override '{override}'. Expected format: key.path=value")
-    path_raw, value_raw = text.split("=", 1)
+    op = None
+    pos = -1
+    for cand in ("+=", "-=", "="):
+        pos = text.find(cand)
+        if pos > 0:
+            op = cand
+            break
+    if op is None:
+        raise ValueError(
+            f"Invalid override '{override}'. Expected format: key.path=value (or += / -=)."
+        )
+    path_raw = text[:pos].strip()
+    value_raw = text[pos + len(op) :]
     path = [x.strip() for x in path_raw.split(".") if x.strip()]
     if not path:
         raise ValueError(f"Invalid override '{override}'. Empty key path.")
@@ -918,8 +951,78 @@ def apply_config_override(cfg: dict[str, Any], override: str) -> dict[str, Any]:
         value = yaml.safe_load(value_raw)
     except Exception:
         value = value_raw
+    return path, op, value
 
-    out = dict(cfg)
+
+def _apply_override_value(current: Any, op: str, value: Any, override: str) -> Any:
+    if op == "=":
+        return value
+
+    if op == "+=":
+        if current is None:
+            out = []
+            if isinstance(value, list):
+                out.extend(list(value))
+            else:
+                out.append(value)
+            return out
+
+        if isinstance(current, list):
+            out = list(current)
+            if isinstance(value, list):
+                out.extend(list(value))
+            else:
+                out.append(value)
+            return out
+
+        if isinstance(current, dict):
+            if not isinstance(value, dict):
+                raise ValueError(
+                    f"Invalid override '{override}': '+=' on dict target requires object value."
+                )
+            return deep_merge_dict(current, value)
+
+        raise ValueError(f"Invalid override '{override}': '+=' only supports list/dict targets.")
+
+    if op == "-=":
+        if current is None:
+            raise ValueError(f"Invalid override '{override}': '-=' target path does not exist.")
+
+        if isinstance(current, list):
+            out = list(current)
+            targets = list(value) if isinstance(value, list) else [value]
+            for target in targets:
+                out = [x for x in out if x != target]
+            return out
+
+        if isinstance(current, dict):
+            out = dict(current)
+            targets = list(value) if isinstance(value, list) else [value]
+            for target in targets:
+                if not isinstance(target, str):
+                    raise ValueError(
+                        f"Invalid override '{override}': '-=' dict target requires string key(s)."
+                    )
+                out.pop(target, None)
+            return out
+
+        raise ValueError(f"Invalid override '{override}': '-=' only supports list/dict targets.")
+
+    raise ValueError(f"Unsupported override operator in '{override}': {op}")
+
+
+def apply_config_override(cfg: dict[str, Any], override: str) -> dict[str, Any]:
+    """应用单条覆盖项并返回新配置。
+
+    支持：
+    - `a.b=value` 替换
+    - `a.list+=value` 列表追加（value 为列表时扩展）
+    - `a.list-=value` 列表删除（value 为列表时批量删除）
+    - `a.dict+= {...}` 字典深度合并
+    - `a.dict-= key` 或 `a.dict-=[k1,k2]` 字典删键
+    """
+    path, op, value = _parse_override(override)
+    out = deepcopy(cfg)
     node: dict[str, Any] = out
     for seg in path[:-1]:
         nxt = node.get(seg)
@@ -927,7 +1030,13 @@ def apply_config_override(cfg: dict[str, Any], override: str) -> dict[str, Any]:
             nxt = {}
             node[seg] = nxt
         node = nxt
-    node[path[-1]] = value
+    leaf = path[-1]
+    node[leaf] = _apply_override_value(
+        current=node.get(leaf),
+        op=op,
+        value=value,
+        override=override,
+    )
     return out
 
 
@@ -1155,6 +1264,16 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
             errors.append("research.ic_rolling_window: must be >= 5.")
     except Exception:
         errors.append("research.ic_rolling_window: must be an integer.")
+
+    ts_signal_lags_raw = _as_list(research_cfg.get("ts_signal_lags"))
+    if ts_signal_lags_raw:
+        for lag in ts_signal_lags_raw:
+            try:
+                if int(lag) < 0:
+                    raise ValueError
+            except Exception:
+                errors.append(f"research.ts_signal_lags: invalid lag '{lag}', must be non-negative int.")
+                break
 
     missing_policy = str(research_cfg.get("missing_policy", "drop")).strip().lower()
     allowed_missing = {"drop", "fill_zero", "ffill_by_asset", "cs_median_by_date", "keep"}
@@ -2092,6 +2211,7 @@ def run_from_config(
                     standardization=scope_cfg["standardization"],  # type: ignore[arg-type]
                     ts_standardize_window=int(research_cfg["ts_standardize_window"]),
                     ts_quantile_lookback=int(research_cfg["ts_quantile_lookback"]),
+                    ts_signal_lags=list(research_cfg["ts_signal_lags"]),
                 )
                 outputs = TimeSeriesFactorResearchPipeline(ts_cfg).run(
                     panel=panel,
