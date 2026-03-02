@@ -58,6 +58,7 @@ def _base_data(scope: str, adapter: str) -> dict[str, Any]:
         ]
     elif adapter == "sina":
         out["data_dir"] = "/stock_sina_update"
+        out["min_rows_per_asset"] = 30
         out["fields_required"] = ["date", "asset", "close", "volume", "mkt_cap", "industry"] if is_cs else [
             "date",
             "close",
@@ -67,6 +68,7 @@ def _base_data(scope: str, adapter: str) -> dict[str, Any]:
         out["start_date"] = "2020-01-01"
         out["end_date"] = None
         out["request_timeout_sec"] = 20
+        out["min_rows_per_asset"] = 30
         out["fields_required"] = ["date", "asset", "close", "volume"] if is_cs else ["date", "close"]
     else:  # pragma: no cover
         raise ValueError(f"Unsupported adapter: {adapter}")

@@ -10,6 +10,7 @@ data:
   start_date: '2022-01-01'
   end_date: null
   request_timeout_sec: 20
+  min_rows_per_asset: 30
   fields_required: [date, asset, close, volume]
   sanitize: true
   duplicate_policy: last

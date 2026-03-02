@@ -85,4 +85,5 @@ def test_run_from_config_with_custom_data_adapter_plugin(tmp_path: Path) -> None
     meta = json.loads(res.run_meta_json.read_text(encoding="utf-8"))
     assert meta["data"]["config"]["adapter"] == "mock"
     assert "mock" in meta["data"]["adapter_plugin_config"]["registry_adapters"]
-
+    assert meta["data"]["load_report"]["panel_profile"]["source"] == "adapter"
+    assert float(meta["data"]["load_report"]["adapter_load_seconds"]) >= 0.0

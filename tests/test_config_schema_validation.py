@@ -100,3 +100,20 @@ def test_validate_schema_custom_adapter_allowed_with_plugins() -> None:
     cfg["data"]["adapter_plugin_dirs"] = ["plugins/data_adapters"]
     warnings = validate_run_config_schema(cfg, strict=True)
     assert isinstance(warnings, list)
+
+
+def test_validate_schema_stooq_rejects_bad_timeout() -> None:
+    cfg = _valid_cfg()
+    cfg["data"]["adapter"] = "stooq"
+    cfg["data"]["symbols"] = ["aapl"]
+    cfg["data"]["request_timeout_sec"] = 0
+    with pytest.raises(ValueError, match="request_timeout_sec"):
+        validate_run_config_schema(cfg, strict=True)
+
+
+def test_validate_schema_synthetic_rejects_small_n_days() -> None:
+    cfg = _valid_cfg()
+    cfg["data"]["adapter"] = "synthetic"
+    cfg["data"]["synthetic"]["n_days"] = 10
+    with pytest.raises(ValueError, match="data.synthetic.n_days"):
+        validate_run_config_schema(cfg, strict=True)

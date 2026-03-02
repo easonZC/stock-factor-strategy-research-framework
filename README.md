@@ -227,6 +227,14 @@ Plugin module can expose:
 - `get_data_adapter_registry()`
 - or `prepare_<name>_panel(config)` function
 
+Reference templates:
+- `examples/plugins/data_adapters/README.md`
+- `examples/plugins/data_adapters/mock_feed.py`
+
+`run_meta.json` now includes structured adapter load profile:
+- `data.load_report.adapter_load_seconds`
+- `data.load_report.panel_profile` (rows/assets/date-range/columns/source)
+
 ## Typical Report Output Tree
 ```text
 outputs/research/factor/panel_report/

@@ -54,3 +54,4 @@ def test_generate_run_config_supports_stooq_adapter(tmp_path: Path) -> None:
     cfg = yaml.safe_load(out_path.read_text(encoding="utf-8"))
     assert cfg["data"]["adapter"] == "stooq"
     assert isinstance(cfg["data"]["symbols"], list) and cfg["data"]["symbols"]
+    assert cfg["data"]["min_rows_per_asset"] == 30

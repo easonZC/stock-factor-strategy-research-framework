@@ -61,6 +61,8 @@ def test_run_from_config_cs_smoke(tmp_path) -> None:
     assert meta["scope"]["eval_axis"] == "cross_section"
     assert "timings_seconds" in meta and "research" in meta["timings_seconds"]
     assert "warning_summary" in meta
+    assert "panel_profile" in meta["data"]["load_report"]
+    assert "adapter_load_seconds" in meta["data"]["load_report"]
 
 
 def test_run_from_config_ts_smoke(tmp_path) -> None:
@@ -108,6 +110,8 @@ def test_run_from_config_ts_smoke(tmp_path) -> None:
     assert meta["scope"]["eval_axis"] == "time"
     assert "timings_seconds" in meta and "backtest" in meta["timings_seconds"]
     assert "warning_summary" in meta
+    assert "panel_profile" in meta["data"]["load_report"]
+    assert "adapter_load_seconds" in meta["data"]["load_report"]
 
 
 def test_run_from_config_warn_skip_factor_and_flexible_preprocess(tmp_path) -> None:

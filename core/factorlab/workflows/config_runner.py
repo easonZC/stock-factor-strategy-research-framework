@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -515,6 +516,78 @@ def compose_run_config(
     return merged
 
 
+def _validate_data_adapter_fragment(
+    data_cfg: dict[str, Any],
+    adapter: str,
+    errors: list[str],
+    warnings_out: list[str],
+) -> None:
+    if adapter == "synthetic":
+        syn = _as_dict(data_cfg.get("synthetic"))
+        if not syn:
+            warnings_out.append("data.synthetic: not provided; runtime defaults will be used.")
+            return
+        for fld, min_val in [("n_assets", 1), ("n_days", 60)]:
+            if fld not in syn:
+                continue
+            try:
+                val = int(syn.get(fld))
+            except Exception:
+                errors.append(f"data.synthetic.{fld}: must be an integer >= {min_val}.")
+                continue
+            if val < min_val:
+                errors.append(f"data.synthetic.{fld}: must be >= {min_val}.")
+        if "start_date" in syn:
+            ts = pd.to_datetime(syn.get("start_date"), errors="coerce")
+            if pd.isna(ts):
+                errors.append("data.synthetic.start_date: must be parseable date string.")
+        return
+
+    if adapter == "stooq":
+        symbols = [str(x).strip() for x in _as_list(data_cfg.get("symbols")) if str(x).strip()]
+        if not symbols:
+            errors.append("data.symbols: requires non-empty list for stooq adapter.")
+        for fld in ["start_date", "end_date"]:
+            raw = data_cfg.get(fld)
+            if raw is None:
+                continue
+            ts = pd.to_datetime(raw, errors="coerce")
+            if pd.isna(ts):
+                errors.append(f"data.{fld}: must be parseable date string when provided.")
+        try:
+            timeout = int(data_cfg.get("request_timeout_sec", 20))
+            if timeout <= 0:
+                errors.append("data.request_timeout_sec: must be > 0.")
+        except Exception:
+            errors.append("data.request_timeout_sec: must be an integer > 0.")
+        try:
+            min_rows = int(data_cfg.get("min_rows_per_asset", 30))
+            if min_rows <= 0:
+                errors.append("data.min_rows_per_asset: must be > 0.")
+        except Exception:
+            errors.append("data.min_rows_per_asset: must be an integer > 0.")
+        return
+
+    if adapter == "sina":
+        try:
+            min_rows = int(data_cfg.get("min_rows_per_asset", 30))
+            if min_rows <= 0:
+                errors.append("data.min_rows_per_asset: must be > 0.")
+        except Exception:
+            errors.append("data.min_rows_per_asset: must be an integer > 0.")
+        return
+
+    if adapter in {"parquet", "csv"}:
+        path = data_cfg.get("path")
+        if path:
+            suffix = str(path).strip().lower()
+            if adapter == "parquet" and not suffix.endswith(".parquet"):
+                warnings_out.append("data.path: adapter=parquet but file suffix is not '.parquet'.")
+            if adapter == "csv" and not suffix.endswith(".csv"):
+                warnings_out.append("data.path: adapter=csv but file suffix is not '.csv'.")
+        return
+
+
 def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list[str]:
     """Pre-validate run config schema and return non-blocking warnings."""
     errors: list[str] = []
@@ -572,6 +645,8 @@ def validate_run_config_schema(cfg: dict[str, Any], strict: bool = True) -> list
     adapter_plugin_on_error = str(data_cfg.get("adapter_plugin_on_error", "raise")).strip().lower()
     if adapter_plugin_on_error not in {"raise", "warn_skip"}:
         errors.append("data.adapter_plugin_on_error: must be one of ['raise', 'warn_skip'].")
+    if adapter in builtin_adapters:
+        _validate_data_adapter_fragment(data_cfg=data_cfg, adapter=adapter, errors=errors, warnings_out=warnings)
 
     factor_cfg = _as_dict(cfg.get("factor"))
     factor_names = _as_list(factor_cfg.get("names"))
@@ -704,6 +779,29 @@ def _load_data(
     duplicate_policy = str(data_cfg["duplicate_policy"])
     loader_report: dict[str, Any] = {"adapter": adapter, "sanitize": sanitize}
 
+    def _attach_panel_profile(df: pd.DataFrame, source: str) -> None:
+        if df.empty:
+            loader_report["panel_profile"] = {
+                "source": source,
+                "rows": 0,
+                "assets": 0,
+                "dates": 0,
+                "date_min": None,
+                "date_max": None,
+                "columns": int(len(df.columns)),
+            }
+            return
+        d = pd.to_datetime(df["date"], errors="coerce") if "date" in df.columns else pd.Series(dtype="datetime64[ns]")
+        loader_report["panel_profile"] = {
+            "source": source,
+            "rows": int(len(df)),
+            "assets": int(df["asset"].nunique()) if "asset" in df.columns else 0,
+            "dates": int(d.nunique()) if not d.empty else 0,
+            "date_min": str(d.min()) if not d.empty else None,
+            "date_max": str(d.max()) if not d.empty else None,
+            "columns": int(len(df.columns)),
+        }
+
     if adapter == "synthetic":
         s = data_cfg["synthetic"]
         n_assets_default = 1 if data_cfg["mode"] == "single_asset" else 40
@@ -713,30 +811,36 @@ def _load_data(
             seed=_to_int(s.get("seed"), 7),
             start_date=str(s.get("start_date", "2021-01-01")),
         )
+        t0 = time.perf_counter()
         panel = generate_synthetic_panel(syn_cfg)
+        loader_report["adapter_load_seconds"] = float(time.perf_counter() - t0)
         loader_report["synthetic"] = syn_cfg.__dict__ if hasattr(syn_cfg, "__dict__") else {
             "n_assets": syn_cfg.n_assets,
             "n_days": syn_cfg.n_days,
             "seed": syn_cfg.seed,
             "start_date": syn_cfg.start_date,
         }
+        _attach_panel_profile(panel, source="synthetic")
         return panel, loader_report
 
     if adapter in {"parquet", "csv"}:
         path = data_cfg.get("path")
         if not path:
             raise ValueError("data.path is required when data.adapter is parquet/csv")
+        t0 = time.perf_counter()
         read_res = read_panel(
             path=str(path),
             sanitize=sanitize,
             sanitization_config=PanelSanitizationConfig(duplicate_policy=duplicate_policy),
             return_report=sanitize,
         )
+        loader_report["adapter_load_seconds"] = float(time.perf_counter() - t0)
         if sanitize:
             panel, report = read_res
             loader_report["sanitization_report"] = report.__dict__ if hasattr(report, "__dict__") else str(report)
         else:
             panel = read_res
+        _attach_panel_profile(panel, source="file_io")
         return panel, loader_report
 
     if adapter not in adapter_registry:
@@ -754,11 +858,14 @@ def _load_data(
         end_date=str(data_cfg.get("end_date")) if data_cfg.get("end_date") else None,
         request_timeout_sec=int(data_cfg.get("request_timeout_sec", 20)),
     )
+    t0 = time.perf_counter()
     panel = adapter_fn(adapter_cfg)
+    loader_report["adapter_load_seconds"] = float(time.perf_counter() - t0)
     loader_report["adapter_registry_size"] = int(len(adapter_registry))
     loader_report["symbols"] = list(adapter_cfg.symbols)
     loader_report["start_date"] = adapter_cfg.start_date
     loader_report["end_date"] = adapter_cfg.end_date
+    _attach_panel_profile(panel, source="adapter")
     return panel, loader_report
 
 
