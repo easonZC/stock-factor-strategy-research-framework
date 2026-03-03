@@ -69,6 +69,11 @@ python apps/run_factor_research.py \
   --factors factor_a,factor_b
 ```
 
+### 6) Clean outputs quickly
+```bash
+python apps/cleanup_outputs.py --root outputs --purge-all
+```
+
 `apps/run_from_config.py`、`apps/run_factor_research.py`、`apps/run_model_factor_benchmark.py` 在未传 `--out` 时会自动生成输出目录（带时间戳），也支持 `--name` 指定更易读的运行名。
 
 ## Why `adapter` and `synthetic` still exist
