@@ -96,6 +96,7 @@ python apps/run_from_config.py \
 - `apps/run_model_factor_benchmark.py`: 模型因子 OOF 基准评测
 - `apps/cleanup_outputs.py`: 输出目录清理
 - `docs/cli_quickstart.md`: CLI 使用路径与常见场景速查
+- `docs/example_factor_and_model_runs.md`: TS/CS 自定义因子 + ML/NN 基准完整示例
 
 ## Output Tree
 ```text
