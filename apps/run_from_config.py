@@ -10,6 +10,7 @@ import argparse
 from pathlib import Path
 
 from _bootstrap import ensure_core_path
+from _cli import add_logging_args, add_output_args, setup_logging_from_args
 from _ux import render_run_summary, resolve_output_dir
 
 ROOT = ensure_core_path(__file__)
@@ -17,7 +18,7 @@ ROOT = ensure_core_path(__file__)
 import yaml
 
 from factorlab.ops import OutputRetentionManager, RetentionPolicy  # noqa: E402
-from factorlab.utils import configure_logging, get_logger  # noqa: E402
+from factorlab.utils import get_logger  # noqa: E402
 from factorlab.workflows import compose_run_config, run_from_config, validate_run_config_schema  # noqa: E402
 
 LOGGER = get_logger("factorlab.run_from_config")
@@ -54,16 +55,7 @@ def parse_args() -> argparse.Namespace:
             "Examples: research.quantiles=10, research.horizons+=20, research.winsorize-='method'."
         ),
     )
-    parser.add_argument(
-        "--out",
-        default=None,
-        help="输出目录；不填则自动生成到 outputs/research/factor/<name>_<timestamp>",
-    )
-    parser.add_argument(
-        "--name",
-        default=None,
-        help="运行名称（仅在未提供 --out 时生效）。",
-    )
+    add_output_args(parser, category="factor")
     parser.add_argument(
         "--save-effective-config",
         action="store_true",
@@ -84,16 +76,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Validate merged config and exit without running research/backtest pipeline.",
     )
-    parser.add_argument(
-        "--log-level",
-        default=None,
-        help="Logging level (DEBUG/INFO/WARNING/ERROR). Also supports env FACTORLAB_LOG_LEVEL.",
-    )
-    parser.add_argument(
-        "--log-file",
-        default=None,
-        help="Optional log file path for this run.",
-    )
+    add_logging_args(parser, include_log_file=True)
     parser.add_argument(
         "--cleanup-old-outputs",
         action="store_true",
@@ -126,7 +109,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    configure_logging(level=args.log_level, log_file=args.log_file, force=True)
+    setup_logging_from_args(args)
     effective_cfg = compose_run_config(config_paths=args.config, overrides=args.overrides)
     default_name = Path(args.config[-1]).stem if args.config else "factor_run"
     out_dir = resolve_output_dir(

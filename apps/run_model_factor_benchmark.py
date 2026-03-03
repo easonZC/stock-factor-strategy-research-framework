@@ -7,12 +7,13 @@ from __future__ import annotations
 
 import argparse
 from _bootstrap import ensure_core_path
+from _cli import add_logging_args, add_output_args, setup_logging_from_args
 from _ux import render_run_summary, resolve_output_dir
 
 ROOT = ensure_core_path(__file__)
 
 from factorlab.config import UniverseFilterConfig  # noqa: E402
-from factorlab.utils import configure_logging, get_logger  # noqa: E402
+from factorlab.utils import get_logger  # noqa: E402
 from factorlab.workflows import ModelFactorBenchmarkConfig, run_model_factor_benchmark  # noqa: E402
 
 LOGGER = get_logger("factorlab.run_model_factor_benchmark")
@@ -30,16 +31,7 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.add_argument("--panel", required=True, help="面板路径（.parquet/.csv）")
-    parser.add_argument(
-        "--out",
-        default=None,
-        help="输出目录；不填则自动生成到 outputs/research/model_factor/<name>_<timestamp>",
-    )
-    parser.add_argument(
-        "--name",
-        default=None,
-        help="运行名称（仅在未提供 --out 时生效）。",
-    )
+    add_output_args(parser, category="model_factor")
     parser.add_argument(
         "--models",
         default="lgbm,mlp",
@@ -120,22 +112,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-history-days", type=int, default=1)
     parser.add_argument("--min-median-dollar-volume", type=float, default=0.0)
     parser.add_argument("--liquidity-lookback", type=int, default=20)
-    parser.add_argument(
-        "--log-level",
-        default=None,
-        help="日志级别（DEBUG/INFO/WARNING/ERROR），也可用环境变量 FACTORLAB_LOG_LEVEL。",
-    )
-    parser.add_argument(
-        "--log-file",
-        default=None,
-        help="日志文件路径（可选）。",
-    )
+    add_logging_args(parser, include_log_file=True)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    configure_logging(level=args.log_level, log_file=args.log_file, force=True)
+    setup_logging_from_args(args)
 
     workflow_cfg = ModelFactorBenchmarkConfig(
         models=args.models,

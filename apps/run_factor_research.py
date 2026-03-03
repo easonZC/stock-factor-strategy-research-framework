@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import argparse
 from _bootstrap import ensure_core_path
+from _cli import add_logging_args, add_output_args, setup_logging_from_args
 from _ux import render_run_summary, resolve_output_dir
 
 ROOT = ensure_core_path(__file__)
 
-from factorlab.utils import configure_logging, get_logger  # noqa: E402
+from factorlab.utils import get_logger  # noqa: E402
 from factorlab.workflows import run_from_config  # noqa: E402
 
 LOGGER = get_logger("factorlab.run_factor_research")
@@ -37,16 +38,7 @@ def parse_args() -> argparse.Namespace:
         help="逗号分隔因子名；留空时自动从面板列发现因子。",
     )
     parser.add_argument("--horizons", nargs="+", type=int, default=[1, 5, 10, 20], help="前瞻收益窗口")
-    parser.add_argument(
-        "--out",
-        default=None,
-        help="输出目录；不填则自动生成到 outputs/research/factor/<name>_<timestamp>",
-    )
-    parser.add_argument(
-        "--name",
-        default=None,
-        help="运行名称（仅在未提供 --out 时生效）。",
-    )
+    add_output_args(parser, category="factor")
     parser.add_argument("--neutralize", choices=["none", "size", "industry", "both"], default="both")
     parser.add_argument("--winsorize", choices=["quantile", "mad"], default="quantile")
     parser.add_argument(
@@ -72,17 +64,13 @@ def parse_args() -> argparse.Namespace:
         default="warn_skip",
         help="因子缺失时行为。",
     )
-    parser.add_argument(
-        "--log-level",
-        default=None,
-        help="日志级别（DEBUG/INFO/WARNING/ERROR）。",
-    )
+    add_logging_args(parser)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    configure_logging(level=args.log_level, force=True)
+    setup_logging_from_args(args)
     factor_names = [x.strip() for x in str(args.factors).split(",") if x.strip()]
     preprocess_steps = [x.strip().lower() for x in str(args.preprocess_steps).split(",") if x.strip()]
 
