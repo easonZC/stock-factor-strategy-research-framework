@@ -19,13 +19,20 @@ from .model_factor_benchmark import (
     ModelFactorBenchmarkResult,
     run_model_factor_benchmark,
 )
+from .panel_factor_research import (
+    PanelFactorResearchConfig,
+    build_panel_factor_research_run_config,
+    run_panel_factor_research,
+)
 from .runtime import collect_runtime_manifest
 
 __all__ = [
     "ConfigRunResult",
     "ModelFactorBenchmarkConfig",
     "ModelFactorBenchmarkResult",
+    "PanelFactorResearchConfig",
     "apply_config_override",
+    "build_panel_factor_research_run_config",
     "collect_runtime_manifest",
     "compose_run_config",
     "compose_run_config_with_alias_report",
@@ -33,6 +40,7 @@ __all__ = [
     "load_run_config",
     "normalize_run_config_aliases",
     "run_from_config",
+    "run_panel_factor_research",
     "run_model_factor_benchmark",
     "validate_run_config_schema",
 ]
