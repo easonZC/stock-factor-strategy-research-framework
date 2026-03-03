@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from factorlab.research.metric_catalog import build_factor_scorecard, build_metric_inventory
 from factorlab.utils import ensure_within, safe_slug
 
 
@@ -66,8 +67,15 @@ class ReportRenderer:
         return out, metric_col
 
     def _find_figure_for_variant(self, paths: list[Path], variant: str, filename: str) -> Path | None:
-        variant_token = f"/{str(variant).strip()}/"
-        picked = [p for p in paths if p.name == filename and variant_token in p.as_posix()]
+        variant_key = str(variant).strip().lower()
+        picked = []
+        for p in paths:
+            if p.name != filename:
+                continue
+            posix = p.as_posix().lower()
+            parent_name = p.parent.name.lower()
+            if f"/{variant_key}/" in posix or parent_name.endswith(f"__{variant_key}"):
+                picked.append(p)
         if picked:
             return picked[0]
         fallback = [p for p in paths if p.name == filename]
@@ -170,7 +178,7 @@ class ReportRenderer:
                 rel = p.relative_to(self.out_dir).as_posix()
                 lines.append(f"- `{rel}`")
             lines.append("")
-        lines.append("完整明细仍在 `assets/factors/` 与 `tables/factors/`。")
+        lines.append("完整明细仍在 `assets/detail/` 与 `tables/detail/`。")
 
         out = self.out_dir / "README_FIRST.md"
         out.write_text("\n".join(lines), encoding="utf-8")
@@ -203,12 +211,25 @@ class ReportRenderer:
         table_map = {k: list(v) for k, v in table_map.items()}
         table_map.setdefault("global", [])
 
+        overview_dir = self.out_dir / "tables" / "overview"
+        overview_dir.mkdir(parents=True, exist_ok=True)
+
         quick_summary, metric_col = self._build_quick_summary(summary)
         quick_summary_path = self.out_dir / "tables" / "quick_summary.csv"
         if not quick_summary.empty:
             quick_summary_path.parent.mkdir(parents=True, exist_ok=True)
             quick_summary.to_csv(quick_summary_path, index=False)
             table_map["global"].insert(0, quick_summary_path)
+
+        metric_inventory = build_metric_inventory(summary)
+        metric_inventory_path = overview_dir / "metric_inventory.csv"
+        metric_inventory.to_csv(metric_inventory_path, index=False)
+        table_map["global"].append(metric_inventory_path)
+
+        factor_scorecard = build_factor_scorecard(summary)
+        factor_scorecard_path = overview_dir / "factor_scorecard.csv"
+        factor_scorecard.to_csv(factor_scorecard_path, index=False)
+        table_map["global"].append(factor_scorecard_path)
 
         key_figures = self._build_key_figures(quick_summary=quick_summary, figure_map=figure_map)
         readme_path = self._write_readme_first(
@@ -239,6 +260,17 @@ class ReportRenderer:
         if not quick_summary.empty:
             rows.append("<h2>Top 因子速览</h2>")
             rows.append(quick_summary.head(10).to_html(index=False, float_format=lambda x: f"{x:.4f}"))
+
+        if not factor_scorecard.empty:
+            rows.append("<h2>核心评分卡（建议优先）</h2>")
+            rows.append(
+                "<p>仅显示用于决策的核心指标组合，诊断类指标仍保留在明细表中。</p>"
+            )
+            rows.append(factor_scorecard.head(10).to_html(index=False, float_format=lambda x: f"{x:.4f}"))
+
+        if not metric_inventory.empty:
+            rows.append("<h2>指标分层（Core / Diagnostic）</h2>")
+            rows.append(metric_inventory.to_html(index=False, float_format=lambda x: f"{x:.4f}"))
 
         if key_figures:
             rows.append("<h2>关键图（优先看）</h2>")

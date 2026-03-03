@@ -251,8 +251,12 @@ class TimeSeriesFactorResearchPipeline:
         out = Path(out_dir)
         assets_dir = out / "assets"
         tables_dir = out / "tables"
+        detail_assets_dir = assets_dir / "detail"
+        detail_tables_dir = tables_dir / "detail"
         assets_dir.mkdir(parents=True, exist_ok=True)
         tables_dir.mkdir(parents=True, exist_ok=True)
+        detail_assets_dir.mkdir(parents=True, exist_ok=True)
+        detail_tables_dir.mkdir(parents=True, exist_ok=True)
 
         panel = panel.sort_values(["asset", "date"]).reset_index(drop=True)
         panel = add_forward_returns(panel, horizons=self.config.horizons)
@@ -270,8 +274,8 @@ class TimeSeriesFactorResearchPipeline:
             panel[f"{fac}_ts"] = fac_std
             outlier_rows.append(outlier_monitor(fac_raw, fac_std, fac))
             fac_slug = factor_slug_map[fac]
-            fac_asset_dir = assets_dir / "factors" / fac_slug / "ts"
-            fac_table_dir = tables_dir / "factors" / fac_slug / "ts"
+            fac_asset_dir = detail_assets_dir / f"{fac_slug}__ts"
+            fac_table_dir = detail_tables_dir / f"{fac_slug}__ts"
             fac_asset_dir.mkdir(parents=True, exist_ok=True)
             fac_table_dir.mkdir(parents=True, exist_ok=True)
 
