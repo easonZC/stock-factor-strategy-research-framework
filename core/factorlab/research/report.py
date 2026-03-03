@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from factorlab.research.insights import build_factor_insights
 from factorlab.research.metric_catalog import build_factor_scorecard, build_metric_inventory
 from factorlab.utils import ensure_within, safe_slug
 
@@ -153,14 +154,16 @@ class ReportRenderer:
         quick_summary: pd.DataFrame,
         metric_col: str,
         key_figures: list[Path],
+        insights: pd.DataFrame,
     ) -> Path:
         lines: list[str] = [
             "# 结果速览（先看这个）",
             "",
             "建议顺序：",
             "1. 打开 `index.html`",
-            "2. 打开 `tables/quick_summary.csv`（因子排名速览）",
-            "3. 打开 `assets/key/`（关键图汇总）",
+            "2. 打开 `overview/`（一站式入口）",
+            "3. 打开 `tables/quick_summary.csv`（因子排名速览）",
+            "4. 打开 `assets/key/`（关键图汇总）",
             "",
         ]
         if not quick_summary.empty:
@@ -171,6 +174,12 @@ class ReportRenderer:
                 lines.append(
                     f"- #{int(row['rank'])} `{row['factor']}` | variant={row['variant']} | horizon={row['horizon']} | {metric_col}={float(row[metric_col]):.4f} | {row['direction']}"
                 )
+            lines.append("")
+        if not insights.empty:
+            lines.append("自动解读（模板）：")
+            for _, row in insights.head(5).iterrows():
+                lines.append(f"- {row['summary_text']}")
+                lines.append(f"  建议：{row['action_text']}")
             lines.append("")
         if key_figures:
             lines.append("关键图文件：")
@@ -184,6 +193,71 @@ class ReportRenderer:
         out.write_text("\n".join(lines), encoding="utf-8")
         return out
 
+    def _write_overview_bundle(
+        self,
+        quick_summary: pd.DataFrame,
+        scorecard: pd.DataFrame,
+        insights: pd.DataFrame,
+        metric_inventory: pd.DataFrame,
+        key_figures: list[Path],
+    ) -> Path:
+        """写出一站式 overview 目录，减少结果查找路径。"""
+        overview_dir = self.out_dir / "overview"
+        overview_dir.mkdir(parents=True, exist_ok=True)
+
+        files_map: dict[str, str] = {}
+        if not quick_summary.empty:
+            p = overview_dir / "top_factors.csv"
+            quick_summary.to_csv(p, index=False)
+            files_map["top_factors"] = p.name
+        if not scorecard.empty:
+            p = overview_dir / "factor_scorecard.csv"
+            scorecard.to_csv(p, index=False)
+            files_map["factor_scorecard"] = p.name
+        if not insights.empty:
+            p = overview_dir / "factor_insights.csv"
+            insights.to_csv(p, index=False)
+            files_map["factor_insights"] = p.name
+        if not metric_inventory.empty:
+            p = overview_dir / "metric_inventory.csv"
+            metric_inventory.to_csv(p, index=False)
+            files_map["metric_inventory"] = p.name
+
+        rel_key_figs = [p.relative_to(self.out_dir).as_posix() for p in key_figures]
+        readme_lines = [
+            "# Overview",
+            "",
+            "这是最简入口目录。建议按以下顺序查看：",
+            "1. factor_insights.csv（自动结论模板）",
+            "2. factor_scorecard.csv（核心评分）",
+            "3. top_factors.csv（Top 因子）",
+            "4. ../assets/key/（关键图）",
+            "",
+        ]
+        if rel_key_figs:
+            readme_lines.append("关键图：")
+            for rel in rel_key_figs:
+                readme_lines.append(f"- `../{rel}`")
+            readme_lines.append("")
+        readme_lines.append("完整明细：")
+        readme_lines.append("- `../tables/detail/`")
+        readme_lines.append("- `../assets/detail/`")
+
+        readme_path = overview_dir / "README.md"
+        readme_path.write_text("\n".join(readme_lines), encoding="utf-8")
+        files_map["readme"] = readme_path.name
+
+        manifest = {
+            "overview_dir": "overview",
+            "files": files_map,
+            "key_figures": rel_key_figs,
+            "detail_tables_root": "tables/detail",
+            "detail_assets_root": "assets/detail",
+        }
+        manifest_path = overview_dir / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        return overview_dir
+
     def _write_navigation_json(
         self,
         quick_summary_path: Path,
@@ -195,8 +269,9 @@ class ReportRenderer:
             "quick_readme": str(readme_path.relative_to(self.out_dir).as_posix()),
             "quick_summary_csv": str(quick_summary_path.relative_to(self.out_dir).as_posix()),
             "key_figures": [str(p.relative_to(self.out_dir).as_posix()) for p in key_figures],
-            "full_assets_root": "assets/factors",
-            "full_tables_root": "tables/factors",
+            "overview_root": "overview",
+            "full_assets_root": "assets/detail",
+            "full_tables_root": "tables/detail",
         }
         out = self.out_dir / "report_navigation.json"
         out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -231,10 +306,23 @@ class ReportRenderer:
         factor_scorecard.to_csv(factor_scorecard_path, index=False)
         table_map["global"].append(factor_scorecard_path)
 
+        factor_insights = build_factor_insights(factor_scorecard)
+        factor_insights_path = overview_dir / "factor_insights.csv"
+        factor_insights.to_csv(factor_insights_path, index=False)
+        table_map["global"].append(factor_insights_path)
+
         key_figures = self._build_key_figures(quick_summary=quick_summary, figure_map=figure_map)
         readme_path = self._write_readme_first(
             quick_summary=quick_summary,
             metric_col=metric_col,
+            key_figures=key_figures,
+            insights=factor_insights,
+        )
+        overview_bundle = self._write_overview_bundle(
+            quick_summary=quick_summary,
+            scorecard=factor_scorecard,
+            insights=factor_insights,
+            metric_inventory=metric_inventory,
             key_figures=key_figures,
         )
         nav_path = self._write_navigation_json(
@@ -252,6 +340,7 @@ class ReportRenderer:
         rows.append("<h2>快速开始（30 秒）</h2>")
         rows.append("<ol>")
         rows.append("<li>先看 <a href='README_FIRST.md'>README_FIRST.md</a>（如何解读）</li>")
+        rows.append(f"<li>进入 <a href='{self._safe_rel(overview_bundle / 'README.md')}'>overview/README.md</a>（一站式入口）</li>")
         if quick_summary_path.exists():
             rows.append(f"<li>看 <a href='{self._safe_rel(quick_summary_path)}'>quick_summary.csv</a>（最关键排名）</li>")
         rows.append(f"<li>再看 <a href='{self._safe_rel(nav_path)}'>report_navigation.json</a>（程序化导航）</li>")
@@ -267,6 +356,14 @@ class ReportRenderer:
                 "<p>仅显示用于决策的核心指标组合，诊断类指标仍保留在明细表中。</p>"
             )
             rows.append(factor_scorecard.head(10).to_html(index=False, float_format=lambda x: f"{x:.4f}"))
+
+        if not factor_insights.empty:
+            rows.append("<h2>自动解读模板（可直接读结论）</h2>")
+            rows.append(
+                factor_insights[["rank", "factor", "strength", "confidence", "risk", "summary_text", "action_text"]]
+                .head(10)
+                .to_html(index=False)
+            )
 
         if not metric_inventory.empty:
             rows.append("<h2>指标分层（Core / Diagnostic）</h2>")

@@ -27,7 +27,8 @@
 
 ## 当前输出位置
 - `tables/overview/factor_scorecard.csv`：每个因子的核心评分卡（建议动作）
+- `tables/overview/factor_insights.csv`：自动解读模板（结论 + 下一步建议）
 - `tables/overview/metric_inventory.csv`：指标分层清单与可用率
 - `tables/quick_summary.csv`：Top 因子速览
 - `tables/summary.csv`：完整原始指标，不做删除
-
+- `overview/`：一站式入口目录（便于直接阅读）
