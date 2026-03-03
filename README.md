@@ -97,6 +97,7 @@ python apps/run_from_config.py \
 - `apps/cleanup_outputs.py`: 输出目录清理
 - `docs/cli_quickstart.md`: CLI 使用路径与常见场景速查
 - `docs/example_factor_and_model_runs.md`: TS/CS 自定义因子 + ML/NN 基准完整示例
+- `docs/metrics_prioritization.md`: 指标分层与解读优先级
 
 ## Output Tree
 ```text
@@ -109,9 +110,14 @@ outputs/research/factor/<run_name>/
   run_manifest.json
   assets/
     key/
+    detail/
   tables/
     quick_summary.csv
     summary.csv
+    overview/
+      factor_scorecard.csv
+      metric_inventory.csv
+    detail/
     data/
       adapter_quality_audit.csv
       field_missing_rates.csv

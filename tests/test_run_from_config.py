@@ -57,6 +57,11 @@ def test_run_from_config_cs_smoke(tmp_path) -> None:
     assert result.run_manifest_json.exists()
     assert result.backtest_summary_csv is not None and result.backtest_summary_csv.exists()
     assert "Data Adapter Audit" in result.index_html.read_text(encoding="utf-8")
+    assert (out_dir / "README_FIRST.md").exists()
+    assert (out_dir / "report_navigation.json").exists()
+    assert (out_dir / "tables" / "quick_summary.csv").exists()
+    assert (out_dir / "tables" / "overview" / "metric_inventory.csv").exists()
+    assert (out_dir / "tables" / "overview" / "factor_scorecard.csv").exists()
 
     meta = json.loads(result.run_meta_json.read_text(encoding="utf-8"))
     assert meta["scope"]["factor_scope"] == "cs"
@@ -123,7 +128,7 @@ def test_run_from_config_ts_smoke(tmp_path) -> None:
     assert "custom_transform_report" in meta["research"]
     assert meta["research"]["config"]["ts_signal_lags"] == [0, 1, 3, 5]
     assert meta["backtest"]["strategy_preflight_report"]["resolved"] == ["sign"]
-    assert (out_dir / "tables" / "factors" / "momentum_20" / "ts" / "signal_lag_ic.csv").exists()
+    assert (out_dir / "tables" / "detail" / "momentum_20__ts" / "signal_lag_ic.csv").exists()
 
 
 def test_run_from_config_warn_skip_factor_and_flexible_preprocess(tmp_path) -> None:
@@ -486,9 +491,9 @@ def test_run_from_config_cs_meanvar_and_regression_outputs(tmp_path) -> None:
     bt_summary = pd.read_csv(Path(result.backtest_summary_csv))
     assert set(bt_summary["strategy_mode"]) == {"meanvar"}
 
-    fmb_summary = out_dir / "tables" / "factors" / "momentum_20" / "raw" / "fama_macbeth_summary.csv"
-    industry_summary = out_dir / "tables" / "factors" / "momentum_20" / "raw" / "industry_decomposition_summary.csv"
-    style_summary = out_dir / "tables" / "factors" / "momentum_20" / "raw" / "style_decomposition_summary.csv"
+    fmb_summary = out_dir / "tables" / "detail" / "momentum_20__raw" / "fama_macbeth_summary.csv"
+    industry_summary = out_dir / "tables" / "detail" / "momentum_20__raw" / "industry_decomposition_summary.csv"
+    style_summary = out_dir / "tables" / "detail" / "momentum_20__raw" / "style_decomposition_summary.csv"
     assert fmb_summary.exists()
     assert industry_summary.exists()
     assert style_summary.exists()

@@ -71,8 +71,12 @@ class FactorResearchPipeline:
         out = Path(out_dir)
         assets_dir = out / "assets"
         tables_dir = out / "tables"
+        detail_assets_dir = assets_dir / "detail"
+        detail_tables_dir = tables_dir / "detail"
         assets_dir.mkdir(parents=True, exist_ok=True)
         tables_dir.mkdir(parents=True, exist_ok=True)
+        detail_assets_dir.mkdir(parents=True, exist_ok=True)
+        detail_tables_dir.mkdir(parents=True, exist_ok=True)
 
         panel = panel.sort_values(["date", "asset"]).reset_index(drop=True)
         for col in panel.select_dtypes(include=["float64"]).columns:
@@ -143,8 +147,9 @@ class FactorResearchPipeline:
             for variant in variants:
                 col = f"{fac}_{variant}"
                 fac_slug = factor_slug_map[fac]
-                fac_asset_dir = assets_dir / "factors" / fac_slug / variant
-                fac_table_dir = tables_dir / "factors" / fac_slug / variant
+                fac_key = f"{fac_slug}__{variant}"
+                fac_asset_dir = detail_assets_dir / fac_key
+                fac_table_dir = detail_tables_dir / fac_key
                 fac_asset_dir.mkdir(parents=True, exist_ok=True)
                 fac_table_dir.mkdir(parents=True, exist_ok=True)
 

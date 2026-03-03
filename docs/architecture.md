@@ -28,3 +28,9 @@
 - `run_meta.json`：配置归一化、插件注册、因子解析、告警汇总
 - `run_manifest.json`：运行时环境信息
 - `tables/data/adapter_quality_audit.csv`：数据质量审计摘要
+
+## 报告目录分层（减嵌套）
+- `tables/overview/`：核心决策层（`factor_scorecard.csv`, `metric_inventory.csv`）
+- `tables/detail/`：全量明细层（每个因子与变体的细分表）
+- `assets/key/`：关键图层（Top 因子主图）
+- `assets/detail/`：全量图层（按因子/变体）
