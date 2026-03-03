@@ -1,144 +1,66 @@
 # Stock Factor Strategy Research Framework
 
+English | [中文](#中文简介)
+
 ## English
-This repository is a reusable quant research framework for stock factor research, report generation, and optional strategy backtesting. The project is organized around one stable runtime entry (`apps/run_from_config.py`) and one reusable core library (`core/factorlab/`). Configuration is intentionally reduced to two primary templates: one for cross-sectional research (`configs/cs_factor.yaml`) and one for time-series research (`configs/ts_factor.yaml`). The design goal is practical research efficiency: put your dataset path in config, run one command, and get auditable outputs (`index.html`, tables, plots, run metadata).
+This repository is a reusable quantitative research framework for stock factor research, report generation, and optional strategy backtesting. The framework is config-driven, GitHub-safe, and built for long-term personal/research reuse.
 
-`data.path` is the default data contract:
-- If `data.path` points to `.parquet` or `.csv`, it is loaded as a single panel file.
-- If `data.path` points to a directory, the framework auto-merges `*.parquet,*.csv`.
-- No hard-coded local proprietary paths are required.
+### Language-Specific Full Docs
+- Full English README: [README_EN.md](/home/oknotok/Projects/stock-factor-strategy-research-framework/README_EN.md)
+- Full Chinese README: [README_ZH.md](/home/oknotok/Projects/stock-factor-strategy-research-framework/README_ZH.md)
 
-Factor selection is also simplified:
-- `factor.names` supports explicit factor names.
-- Placeholder names like `factor_name` are ignored intentionally.
-- If names are empty (or placeholders only), the pipeline auto-discovers factor columns from the panel.
-
-## 中文说明
-这是一个面向股票因子研究的可复用工程框架，核心目标是把“数据读取 -> 因子处理 -> 研究报告 -> 可选回测”变成稳定、可审计、可持续迭代的工程流程。项目入口收敛为 `apps/run_from_config.py`，核心逻辑集中在 `core/factorlab/`，配置文件只保留两份主模板：`configs/cs_factor.yaml`（截面）和 `configs/ts_factor.yaml`（时序）。你只需要在配置里写 `data.path`，就可以直接读取你的本地数据并运行。
-
-`data.path` 是统一数据入口：
-- 指向 `.parquet/.csv`：按单文件面板读取。
-- 指向目录：自动合并目录下 `*.parquet,*.csv`。
-- 不依赖私有硬编码路径，不需要改源码才能切数据集。
-
-因子配置也做了简化：
-- `factor.names` 可显式指定因子。
-- `factor_name` 这类占位名会被自动忽略。
-- 若未显式给出因子名，框架会自动从面板列中发现可研究因子列。
-
-## Install
+### Quick Start
 ```bash
 python3 -m pip install -r requirements.txt
-```
 
-## Quick Start
-
-### 1) Cross-sectional research (CS)
-```bash
 python apps/run_from_config.py \
   --config configs/cs_factor.yaml \
   --set data.path=data/raw \
   --set factor.names='[factor_a,factor_b]'
 ```
 
-### 2) Time-series research (TS)
+### Read Outputs in 30 Seconds
+Open run directory in this order:
+1. `README_FIRST.md`
+2. `overview/factor_insights.csv`
+3. `overview/factor_scorecard.csv`
+4. `assets/key/`
+
+### Minimal Docs (Simplified)
+- [docs/user_guide.md](/home/oknotok/Projects/stock-factor-strategy-research-framework/docs/user_guide.md)
+- [docs/architecture.md](/home/oknotok/Projects/stock-factor-strategy-research-framework/docs/architecture.md)
+
+---
+
+## 中文简介
+这是一个面向股票因子研究的可复用工程框架，支持配置驱动运行、研究报告生成和可选回测。项目目标是把“可跑”升级为“可长期维护、可审计、可复现”。
+
+### 完整版说明
+- 英文完整版：[README_EN.md](/home/oknotok/Projects/stock-factor-strategy-research-framework/README_EN.md)
+- 中文完整版：[README_ZH.md](/home/oknotok/Projects/stock-factor-strategy-research-framework/README_ZH.md)
+
+### 快速开始
 ```bash
+python3 -m pip install -r requirements.txt
+
 python apps/run_from_config.py \
-  --config configs/ts_factor.yaml \
-  --set data.path=data/raw/000001.csv \
-  --set factor.names='[factor_ts]'
+  --config configs/cs_factor.yaml \
+  --set data.path=data/raw \
+  --set factor.names='[factor_a,factor_b]'
 ```
 
-### 3) Validate config before run
-```bash
-python apps/lint_config.py --config configs/cs_factor.yaml --set data.path=data/raw
-```
+### 结果最短阅读路径
+每次运行目录按顺序看：
+1. `README_FIRST.md`
+2. `overview/factor_insights.csv`
+3. `overview/factor_scorecard.csv`
+4. `assets/key/`
 
-### 4) Benchmark model factors
-```bash
-python apps/run_model_factor_benchmark.py \
-  --panel data/panel.parquet \
-  --models ridge,rf,lgbm \
-  --name benchmark_v1
-```
+### 精简后的文档入口
+- [docs/user_guide.md](/home/oknotok/Projects/stock-factor-strategy-research-framework/docs/user_guide.md)
+- [docs/architecture.md](/home/oknotok/Projects/stock-factor-strategy-research-framework/docs/architecture.md)
 
-### 5) Optional: fast panel research wrapper
-```bash
-python apps/run_factor_research.py \
-  --panel data/panel.parquet \
-  --factors factor_a,factor_b
-```
-
-### 6) Clean outputs quickly
+### 一键清理输出
 ```bash
 python apps/cleanup_outputs.py --root outputs --purge-all
 ```
-
-`apps/run_from_config.py`、`apps/run_factor_research.py`、`apps/run_model_factor_benchmark.py` 在未传 `--out` 时会自动生成输出目录（带时间戳），也支持 `--name` 指定更易读的运行名。
-
-## Why `adapter` and `synthetic` still exist
-
-- `adapter` means **data loading mode**, not strategy logic.
-- In daily use you can ignore explicit adapter setup and only set `data.path`.
-- `synthetic` is for reproducible smoke tests/CI when no real data is available.
-
-Example synthetic smoke:
-```bash
-python apps/run_from_config.py \
-  --config configs/cs_factor.yaml \
-  --set data.adapter=synthetic \
-  --set factor.names='[momentum_20,volatility_20,liquidity_shock]' \
-  --set backtest.enabled=false \
-  --out outputs/research/factor/ci_smoke
-```
-
-## Main Entry Points
-
-- `apps/run_from_config.py`: 配置驱动主入口（推荐）
-- `apps/lint_config.py`: 配置体检
-- `apps/run_factor_research.py`: 面板文件快速研究（主入口薄封装）
-- `apps/prepare_data.py`: 通过适配器准备面板数据
-- `apps/run_model_factor_benchmark.py`: 模型因子 OOF 基准评测
-- `apps/cleanup_outputs.py`: 输出目录清理
-- `docs/cli_quickstart.md`: CLI 使用路径与常见场景速查
-- `docs/example_factor_and_model_runs.md`: TS/CS 自定义因子 + ML/NN 基准完整示例
-- `docs/metrics_prioritization.md`: 指标分层与解读优先级
-
-## Output Tree
-```text
-outputs/research/factor/<run_name>/
-  index.html
-  README_FIRST.md
-  report_navigation.json
-  overview/
-    README.md
-    manifest.json
-    top_factors.csv
-    factor_scorecard.csv
-    factor_insights.csv
-    metric_inventory.csv
-  config.json
-  run_meta.json
-  run_manifest.json
-  assets/
-    key/
-    detail/
-  tables/
-    quick_summary.csv
-    summary.csv
-    overview/
-      factor_scorecard.csv
-      factor_insights.csv
-      metric_inventory.csv
-    detail/
-    data/
-      adapter_quality_audit.csv
-      field_missing_rates.csv
-      asset_row_counts.csv
-      date_coverage.csv
-```
-
-## Data Safety
-- No raw data committed.
-- No hard-coded tokens or proprietary paths.
-- Data/output/artifact directories are ignored by Git.
