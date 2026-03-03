@@ -16,7 +16,10 @@ from _ux import render_run_summary, resolve_output_dir
 ROOT = ensure_core_path(__file__)
 
 from factorlab.utils import get_logger  # noqa: E402
-from factorlab.workflows import run_from_config  # noqa: E402
+from factorlab.workflows import (  # noqa: E402
+    PanelFactorResearchConfig,
+    run_panel_factor_research,
+)
 
 LOGGER = get_logger("factorlab.run_factor_research")
 
@@ -71,46 +74,18 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     setup_logging_from_args(args)
-    factor_names = [x.strip() for x in str(args.factors).split(",") if x.strip()]
-    preprocess_steps = [x.strip().lower() for x in str(args.preprocess_steps).split(",") if x.strip()]
-
-    cfg: dict = {
-        "run": {
-            "factor_scope": "cs",
-            "eval_axis": "cross_section",
-            "standardization": args.standardization,
-            "stop_after": "research",
-            "research_profile": "full",
-        },
-        "data": {
-            "path": args.panel,
-            "mode": "panel",
-            "fields_required": ["date", "asset", "close"],
-        },
-        "factor": {
-            "on_missing": args.on_missing_factor,
-        },
-        "research": {
-            "horizons": list(args.horizons),
-            "quantiles": int(args.quantiles),
-            "ic_rolling_window": int(args.ic_rolling_window),
-            "missing_policy": args.missing_policy,
-            "preprocess_steps": preprocess_steps,
-            "winsorize": {
-                "enabled": True,
-                "method": args.winsorize,
-            },
-            "neutralize": {
-                "enabled": args.neutralize != "none",
-                "mode": args.neutralize,
-            },
-        },
-        "backtest": {
-            "enabled": False,
-        },
-    }
-    if factor_names:
-        cfg["factor"]["names"] = factor_names
+    workflow_cfg = PanelFactorResearchConfig(
+        factors=args.factors,
+        horizons=list(args.horizons),
+        neutralize=args.neutralize,
+        winsorize=args.winsorize,
+        standardization=args.standardization,
+        missing_policy=args.missing_policy,
+        preprocess_steps=args.preprocess_steps,
+        quantiles=int(args.quantiles),
+        ic_rolling_window=int(args.ic_rolling_window),
+        on_missing_factor=args.on_missing_factor,
+    )
 
     out_dir = resolve_output_dir(
         out=args.out,
@@ -118,7 +93,13 @@ def main() -> None:
         category="factor",
         default_name="panel_research",
     )
-    result = run_from_config(config=cfg, out_dir=out_dir, repo_root=ROOT, validate_schema=True)
+    result = run_panel_factor_research(
+        panel_path=args.panel,
+        out_dir=out_dir,
+        config=workflow_cfg,
+        repo_root=ROOT,
+        validate_schema=True,
+    )
     LOGGER.info(
         "factor research completed: report=%s summary=%s meta=%s",
         result.index_html,
