@@ -62,6 +62,9 @@ def test_run_from_config_cs_smoke(tmp_path) -> None:
     assert (out_dir / "tables" / "quick_summary.csv").exists()
     assert (out_dir / "tables" / "overview" / "metric_inventory.csv").exists()
     assert (out_dir / "tables" / "overview" / "factor_scorecard.csv").exists()
+    assert (out_dir / "tables" / "overview" / "factor_insights.csv").exists()
+    assert (out_dir / "overview" / "README.md").exists()
+    assert (out_dir / "overview" / "manifest.json").exists()
 
     meta = json.loads(result.run_meta_json.read_text(encoding="utf-8"))
     assert meta["scope"]["factor_scope"] == "cs"

@@ -105,6 +105,13 @@ outputs/research/factor/<run_name>/
   index.html
   README_FIRST.md
   report_navigation.json
+  overview/
+    README.md
+    manifest.json
+    top_factors.csv
+    factor_scorecard.csv
+    factor_insights.csv
+    metric_inventory.csv
   config.json
   run_meta.json
   run_manifest.json
@@ -116,6 +123,7 @@ outputs/research/factor/<run_name>/
     summary.csv
     overview/
       factor_scorecard.csv
+      factor_insights.csv
       metric_inventory.csv
     detail/
     data/
