@@ -102,11 +102,15 @@ python apps/run_from_config.py \
 ```text
 outputs/research/factor/<run_name>/
   index.html
+  README_FIRST.md
+  report_navigation.json
   config.json
   run_meta.json
   run_manifest.json
   assets/
+    key/
   tables/
+    quick_summary.csv
     summary.csv
     data/
       adapter_quality_audit.csv
