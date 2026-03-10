@@ -8,11 +8,13 @@ version = "0.2.0"
 description = "GitHub-safe stock factor and strategy research framework"
 requires-python = ">=3.10"
 
-[tool.setuptools]
-package-dir = {"" = "core"}
+[project.scripts]
+factorlab = "factorlab.cli.main:main"
 
+[tool.setuptools]
 [tool.setuptools.packages.find]
-where = ["core"]
+where = ["."]
+include = ["factorlab*"]
 
 [tool.ruff]
 line-length = 100

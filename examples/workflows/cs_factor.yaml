@@ -1,0 +1,33 @@
+# 截面研究 canonical 配置。
+# 推荐使用：
+#   factorlab run --config examples/workflows/cs_factor.yaml --set data.path=data/raw
+
+imports: ["_base.yaml"]
+
+run:
+  factor_scope: cs
+  eval_axis: cross_section
+  standardization: cs_zscore
+
+data:
+  mode: panel
+  fields_required: [date, asset, close]
+
+research:
+  preprocess_steps: [winsorize, standardize, neutralize]
+  winsorize:
+    enabled: true
+    method: quantile
+    lower_q: 0.01
+    upper_q: 0.99
+    mad_scale: 5.0
+  neutralize:
+    enabled: true
+    mode: both
+
+backtest:
+  strategy:
+    mode: longshort
+    long_short_quantile: 0.2
+    rebalance_every: 1
+    weight_scheme: equal

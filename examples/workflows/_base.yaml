@@ -1,0 +1,39 @@
+# 通用研究基线配置。
+# 子配置只覆盖 scope / data contract / research/backtest 差异项。
+
+run:
+  research_profile: dev
+  stop_after: backtest
+  config_mode: warn
+  leakage_guard_mode: strict
+
+data:
+  path: data/raw
+  sanitize: true
+  duplicate_policy: last
+  raw_pattern: "*.parquet,*.csv"
+  raw_asset_from_filename: true
+  min_rows_per_asset: 30
+
+factor:
+  names: [factor_name]
+  on_missing: warn_skip
+  auto_discover_from_panel: true
+  auto_discover: false
+  plugin_dirs: []
+  plugins: []
+  plugin_on_error: warn_skip
+  expressions: {}
+  expression_on_error: warn_skip
+  combinations: []
+  combination_on_error: warn_skip
+
+research:
+  horizons: [1, 5, 10, 20]
+  quantiles: 5
+  ic_rolling_window: 20
+  annualization_days: 252
+  missing_policy: drop
+
+backtest:
+  enabled: false

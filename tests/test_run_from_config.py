@@ -58,13 +58,24 @@ def test_run_from_config_cs_smoke(tmp_path) -> None:
     assert result.backtest_summary_csv is not None and result.backtest_summary_csv.exists()
     assert "Data Adapter Audit" in result.index_html.read_text(encoding="utf-8")
     assert (out_dir / "README_FIRST.md").exists()
+    assert (out_dir / "artifact_catalog.json").exists()
     assert (out_dir / "report_navigation.json").exists()
-    assert (out_dir / "tables" / "quick_summary.csv").exists()
+    assert (out_dir / "data_lineage.json").exists()
+    assert (out_dir / "experiment_registry.json").exists()
+    assert (out_dir / "tables" / "overview" / "quick_summary.csv").exists()
+    assert (out_dir / "tables" / "overview" / "factor_definitions.csv").exists()
+    assert (out_dir / "tables" / "overview" / "factor_definitions.json").exists()
+    assert (out_dir / "tables" / "overview" / "strategy_definitions.csv").exists()
+    assert (out_dir / "tables" / "overview" / "strategy_definitions.json").exists()
     assert (out_dir / "tables" / "overview" / "metric_inventory.csv").exists()
     assert (out_dir / "tables" / "overview" / "factor_scorecard.csv").exists()
     assert (out_dir / "tables" / "overview" / "factor_insights.csv").exists()
+    assert (out_dir / "tables" / "overview" / "figure_attribution.csv").exists()
     assert (out_dir / "overview" / "README.md").exists()
     assert (out_dir / "overview" / "manifest.json").exists()
+    assert not (out_dir / "overview" / "factor_scorecard.csv").exists()
+    assert not (out_dir / "overview" / "factor_insights.csv").exists()
+    assert not (out_dir / "assets" / "key").exists()
 
     meta = json.loads(result.run_meta_json.read_text(encoding="utf-8"))
     assert meta["scope"]["factor_scope"] == "cs"
@@ -75,7 +86,19 @@ def test_run_from_config_cs_smoke(tmp_path) -> None:
     assert "adapter_load_seconds" in meta["data"]["load_report"]
     assert "adapter_validation_report" in meta["data"]
     assert Path(meta["outputs"]["adapter_quality_audit_csv"]).exists()
+    assert Path(meta["outputs"]["data_lineage_json"]).exists()
+    assert Path(meta["outputs"]["factor_definitions_csv"]).exists()
+    assert Path(meta["outputs"]["strategy_definitions_csv"]).exists()
+    assert Path(meta["outputs"]["experiment_registry_json"]).exists()
+    assert meta["factors"]["definition_artifacts"]["factor_definitions_csv"].endswith("factor_definitions.csv")
+    assert any(item["name"] == "momentum_20" for item in meta["factors"]["effective_definitions"])
+    assert meta["backtest"]["effective_definition"]["family"] == "long_short"
+    assert meta["backtest"]["definition_artifacts"]["strategy_definitions_csv"].endswith("strategy_definitions.csv")
     assert "transform_plugin_config" in meta["research"]
+    registry = json.loads((out_dir / "experiment_registry.json").read_text(encoding="utf-8"))
+    assert registry["config_hash"] == meta["config_hash"]
+    assert registry["data_fingerprint"] == meta["data"]["lineage"]["fingerprint"]
+    assert registry["strategy"]["definition"]["family"] == "long_short"
 
 
 def test_run_from_config_ts_smoke(tmp_path) -> None:
@@ -128,9 +151,12 @@ def test_run_from_config_ts_smoke(tmp_path) -> None:
     assert "adapter_load_seconds" in meta["data"]["load_report"]
     assert "adapter_quality_audit_csv" in meta["outputs"]
     assert Path(meta["outputs"]["adapter_quality_audit_csv"]).exists()
+    assert Path(meta["outputs"]["data_lineage_json"]).exists()
+    assert Path(meta["outputs"]["strategy_definitions_csv"]).exists()
     assert "custom_transform_report" in meta["research"]
     assert meta["research"]["config"]["ts_signal_lags"] == [0, 1, 3, 5]
     assert meta["backtest"]["strategy_preflight_report"]["resolved"] == ["sign"]
+    assert meta["backtest"]["effective_definition"]["name"] == "sign"
     assert (out_dir / "tables" / "detail" / "momentum_20__ts" / "signal_lag_ic.csv").exists()
 
 
@@ -411,6 +437,9 @@ def test_run_from_config_stop_after_factor_stage(tmp_path) -> None:
     assert meta["config_governance"]["stop_after"] == "factor"
     assert "factor_stage_panel" in meta["outputs"]
     assert Path(meta["outputs"]["factor_stage_panel"]).exists()
+    assert Path(meta["outputs"]["data_lineage_json"]).exists()
+    assert Path(meta["outputs"]["strategy_definitions_csv"]).exists()
+    assert Path(meta["outputs"]["experiment_registry_json"]).exists()
 
 
 def test_run_from_config_stop_after_research_stage(tmp_path) -> None:

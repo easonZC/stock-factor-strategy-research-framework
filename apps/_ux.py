@@ -1,55 +1,14 @@
-"""应用入口的人机友好工具。"""
+"""兼容层：CLI UX 工具已迁移到 `factorlab.cli.utils`。"""
 
 from __future__ import annotations
 
-import re
-from datetime import datetime
+import sys
 from pathlib import Path
-from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-def _slug(text: str, default: str) -> str:
-    value = str(text).strip().lower()
-    if not value:
-        return default
-    value = re.sub(r"[^a-z0-9]+", "_", value).strip("_")
-    return value or default
+from factorlab.cli.utils import render_run_summary, resolve_output_dir
 
-
-def _timestamp_now() -> str:
-    return datetime.now().strftime("%Y%m%d_%H%M%S")
-
-
-def resolve_output_dir(
-    *,
-    out: str | None,
-    run_name: str | None,
-    category: str,
-    default_name: str,
-) -> Path:
-    """解析输出目录。
-
-    优先级：
-    1) 显式 --out
-    2) 自动目录：outputs/research/<category>/<run_name>_<timestamp>
-    """
-    if out:
-        return Path(out)
-    base = Path("outputs") / "research" / _slug(category, "misc")
-    name = _slug(run_name or default_name, "run")
-    return base / f"{name}_{_timestamp_now()}"
-
-
-def render_run_summary(title: str, lines: dict[str, Any]) -> str:
-    """生成统一的命令行结果摘要。"""
-    parts = [f"[{title}]"]
-    for key, val in lines.items():
-        parts.append(f"- {key}: {val}")
-    return "\n".join(parts)
-
-
-__all__ = [
-    "render_run_summary",
-    "resolve_output_dir",
-]
-
+__all__ = ["render_run_summary", "resolve_output_dir"]

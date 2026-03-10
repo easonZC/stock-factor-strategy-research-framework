@@ -1,0 +1,25 @@
+# 时序研究 canonical 配置。
+# 推荐使用：
+#   factorlab run --config examples/workflows/ts_factor.yaml --set data.path=data/raw/000001.csv
+
+imports: ["_base.yaml"]
+
+run:
+  factor_scope: ts
+  eval_axis: time
+  standardization: ts_rolling_zscore
+
+data:
+  mode: single_asset
+  asset: null
+  fields_required: [date, close]
+
+research:
+  ts_standardize_window: 60
+  ts_quantile_lookback: 80
+  ts_signal_lags: [0, 1, 2, 5]
+
+backtest:
+  strategy:
+    mode: sign
+    sign_threshold: 0.0

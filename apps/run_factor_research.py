@@ -1,124 +1,13 @@
-"""面板文件快速研究入口。
-
-该脚本是 `run_from_config` 的薄封装：
-1. 接收常用参数（面板路径、因子、研究参数）
-2. 组装标准配置字典
-3. 复用统一工作流执行研究
-"""
+"""兼容入口：请优先使用 `python -m factorlab run-panel-research ...`。"""
 
 from __future__ import annotations
 
-import argparse
 from _bootstrap import ensure_core_path
-from _cli import add_logging_args, add_output_args, setup_logging_from_args
-from _ux import render_run_summary, resolve_output_dir
 
-ROOT = ensure_core_path(__file__)
+ensure_core_path(__file__)
 
-from factorlab.utils import get_logger  # noqa: E402
-from factorlab.workflows import (  # noqa: E402
-    PanelFactorResearchConfig,
-    run_panel_factor_research,
-)
-
-LOGGER = get_logger("factorlab.run_factor_research")
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="从单个面板文件直接运行截面因子研究。",
-        epilog=(
-            "示例:\n"
-            "  python apps/run_factor_research.py --panel data/panel.parquet --factors factor_a,factor_b --out outputs/research/factor/panel\n"
-            "  python apps/run_factor_research.py --panel data/panel.parquet --horizons 1 5 10 20 --preprocess-steps winsorize,standardize --out outputs/research/factor/panel_fast\n"
-        ),
-        formatter_class=argparse.RawTextHelpFormatter,
-    )
-    parser.add_argument("--panel", required=True, help="面板文件路径（.parquet/.csv）")
-    parser.add_argument(
-        "--factors",
-        default="",
-        help="逗号分隔因子名；留空时自动从面板列发现因子。",
-    )
-    parser.add_argument("--horizons", nargs="+", type=int, default=[1, 5, 10, 20], help="前瞻收益窗口")
-    add_output_args(parser, category="factor")
-    parser.add_argument("--neutralize", choices=["none", "size", "industry", "both"], default="both")
-    parser.add_argument("--winsorize", choices=["quantile", "mad"], default="quantile")
-    parser.add_argument(
-        "--standardization",
-        choices=["cs_zscore", "cs_rank", "cs_robust_zscore", "none"],
-        default="cs_zscore",
-    )
-    parser.add_argument(
-        "--missing-policy",
-        choices=["drop", "fill_zero", "ffill_by_asset", "cs_median_by_date", "keep"],
-        default="drop",
-    )
-    parser.add_argument(
-        "--preprocess-steps",
-        default="winsorize,standardize,neutralize",
-        help="预处理步骤，逗号分隔。",
-    )
-    parser.add_argument("--quantiles", type=int, default=5, help="分位数组数")
-    parser.add_argument("--ic-rolling-window", type=int, default=20, help="IC 滚动窗口")
-    parser.add_argument(
-        "--on-missing-factor",
-        choices=["raise", "warn_skip"],
-        default="warn_skip",
-        help="因子缺失时行为。",
-    )
-    add_logging_args(parser)
-    return parser.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-    setup_logging_from_args(args)
-    workflow_cfg = PanelFactorResearchConfig(
-        factors=args.factors,
-        horizons=list(args.horizons),
-        neutralize=args.neutralize,
-        winsorize=args.winsorize,
-        standardization=args.standardization,
-        missing_policy=args.missing_policy,
-        preprocess_steps=args.preprocess_steps,
-        quantiles=int(args.quantiles),
-        ic_rolling_window=int(args.ic_rolling_window),
-        on_missing_factor=args.on_missing_factor,
-    )
-
-    out_dir = resolve_output_dir(
-        out=args.out,
-        run_name=args.name,
-        category="factor",
-        default_name="panel_research",
-    )
-    result = run_panel_factor_research(
-        panel_path=args.panel,
-        out_dir=out_dir,
-        config=workflow_cfg,
-        repo_root=ROOT,
-        validate_schema=True,
-    )
-    LOGGER.info(
-        "factor research completed: report=%s summary=%s meta=%s",
-        result.index_html,
-        result.summary_csv,
-        result.run_meta_json,
-    )
-    LOGGER.info(
-        "\n%s",
-        render_run_summary(
-            title="panel_research_completed",
-            lines={
-                "out_dir": result.out_dir,
-                "report": result.index_html,
-                "summary": result.summary_csv,
-                "meta": result.run_meta_json,
-            },
-        ),
-    )
+from factorlab.cli.main import panel_research_main  # noqa: E402
 
 
 if __name__ == "__main__":
-    main()
+    panel_research_main()

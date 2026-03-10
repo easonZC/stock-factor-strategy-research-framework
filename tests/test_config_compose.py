@@ -147,3 +147,20 @@ def test_compose_run_config_detects_import_cycle(tmp_path: Path) -> None:
     b_path.write_text(yaml.safe_dump({"imports": ["a.yaml"], "run": {"eval_axis": "cross_section"}}, sort_keys=False), encoding="utf-8")
     with pytest.raises(ValueError, match="Circular config imports"):
         compose_run_config([a_path])
+
+
+def test_canonical_workflow_config_imports_shared_base(tmp_path: Path) -> None:
+    base = {
+        "run": {"research_profile": "dev", "config_mode": "warn"},
+        "factor": {"names": ["factor_name"], "on_missing": "warn_skip"},
+    }
+    leaf = {
+        "imports": ["_base.yaml"],
+        "run": {"factor_scope": "cs", "eval_axis": "cross_section"},
+    }
+    (tmp_path / "_base.yaml").write_text(yaml.safe_dump(base, sort_keys=False), encoding="utf-8")
+    (tmp_path / "cs.yaml").write_text(yaml.safe_dump(leaf, sort_keys=False), encoding="utf-8")
+    out = compose_run_config([tmp_path / "cs.yaml"])
+    assert out["run"]["research_profile"] == "dev"
+    assert out["run"]["factor_scope"] == "cs"
+    assert out["factor"]["on_missing"] == "warn_skip"
