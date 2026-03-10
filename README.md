@@ -106,6 +106,8 @@ python -m factorlab run-model-benchmark \
   --name mlp_cs_factor_v1
 ```
 
+For a real local panel template, see `examples/model_factors/local_real_data/README.md`.
+
 #### 5.5 Inspect factor definitions
 ```bash
 factorlab list-factors --name volume_price_pressure_20 --json
@@ -253,6 +255,8 @@ python -m factorlab run-model-benchmark \
   --evaluation-axis cross_section \
   --name mlp_cs_factor_v1
 ```
+
+如果你要直接接本地真实 panel，请看 `examples/model_factors/local_real_data/README.md`。
 
 #### 5.5 查看因子定义
 ```bash

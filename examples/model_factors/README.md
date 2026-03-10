@@ -21,7 +21,7 @@
 
 - `engineering_demo`：内置高信噪比 benchmark panel（推荐 `24 assets x 220 days`，约 `5,280` 行）
 - `research_realistic`：内置更接近真实量级的 benchmark panel（推荐 `40 assets x 260 days`，约 `10,400` 行）
-- 生产研究：本地 `parquet/csv` 面板，至少包含 `date, asset, close`
+- `local_real_data`：你自己的本地 `parquet/csv` 面板，至少包含 `date, asset, close`
 
 若要让 MLP 因子更像真实研究数据，建议面板尽量补齐：
 
@@ -101,6 +101,19 @@ python -m factorlab train-model-factor \
 ```
 
 训练完成后，可通过 `ModelFactor` 以模型因子形式复用该 artifact。
+
+### 5. 第三层：本地真实数据模板
+
+如果你已经有自己的 panel，请直接看：
+
+- `examples/model_factors/local_real_data/README.md`
+
+其中包含：
+
+- 推荐命令
+- 指标预期
+- 输出位置
+- 一个小型 `mlp` 参数网格模板
 
 ## 后续再做什么
 

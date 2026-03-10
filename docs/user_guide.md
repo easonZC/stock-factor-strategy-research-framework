@@ -118,7 +118,7 @@ factorlab run \
 
 - 工程回归：`engineering_demo`，建议 `24 assets x 220 days`
 - 研究 sanity check：`research_realistic`，建议 `40 assets x 260 days`
-- 生产研究：本地 `parquet/csv` 面板，至少包含 `date, asset, close`
+- 生产研究：`local_real_data`，即你自己的本地 `parquet/csv` 面板
 
 基线特征建议从最稳妥的一组开始：
 
@@ -166,6 +166,10 @@ python -m factorlab run-model-benchmark \
 
 - `engineering_demo`：验证 NN 因子链路、OOF、报告、artifact 全部打通
 - `research_realistic`：把 `rank_ic_mean` 与 `ICIR` 压回更接近真实研究的量级
+
+如果你要直接上自己的数据，请看：
+
+- `examples/model_factors/local_real_data/README.md`
 
 如果只想快速落一个可复用的神经网络模型因子 artifact：
 

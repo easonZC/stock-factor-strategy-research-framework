@@ -253,6 +253,15 @@ def test_realistic_benchmark_panel_keeps_mlp_metrics_in_plausible_range(tmp_path
     assert 0.20 <= float(mlp_row["research_rank_icir"]) <= 1.20
 
 
+def test_local_real_data_example_param_grid_is_valid() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    grid_path = repo_root / "examples" / "model_factors" / "local_real_data" / "model_param_grids" / "mlp.json"
+    payload = json.loads(grid_path.read_text(encoding="utf-8"))
+    assert isinstance(payload, list) and len(payload) >= 2
+    assert all(isinstance(item, dict) for item in payload)
+    assert all("hidden_layer_sizes" in item for item in payload)
+
+
 def test_model_factor_benchmark_rejects_all_unsupported_models(tmp_path) -> None:
     panel = generate_synthetic_panel(
         SyntheticConfig(

@@ -1,0 +1,22 @@
+[
+  {
+    "hidden_layer_sizes": [64, 32],
+    "activation": "relu",
+    "max_iter": 300,
+    "random_state": 42
+  },
+  {
+    "hidden_layer_sizes": [48, 24],
+    "activation": "tanh",
+    "max_iter": 350,
+    "alpha": 0.001,
+    "random_state": 42
+  },
+  {
+    "hidden_layer_sizes": [32, 16],
+    "activation": "relu",
+    "max_iter": 400,
+    "alpha": 0.003,
+    "random_state": 42
+  }
+]
