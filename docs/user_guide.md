@@ -4,8 +4,17 @@
 
 ## 1. 安装
 ```bash
-python3 -m pip install -r requirements.txt
-python3 -m pip install -e .
+python3 scripts/bootstrap.sh
+# Windows PowerShell:
+pwsh scripts/bootstrap.ps1
+```
+
+如果你要手动安装：
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -e .
 ```
 
 ## 2. 最常用命令

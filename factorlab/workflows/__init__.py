@@ -3,6 +3,8 @@
 对外暴露配置运行、模型因子基准和运行时审计能力。
 """
 
+from factorlab.runtime import OutputContext, RunContext
+
 from .config_runner import (
     ConfigRunResult,
     apply_config_override,
@@ -30,7 +32,9 @@ __all__ = [
     "ConfigRunResult",
     "ModelFactorBenchmarkConfig",
     "ModelFactorBenchmarkResult",
+    "OutputContext",
     "PanelFactorResearchConfig",
+    "RunContext",
     "apply_config_override",
     "build_panel_factor_research_run_config",
     "collect_runtime_manifest",

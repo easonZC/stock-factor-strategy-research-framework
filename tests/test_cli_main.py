@@ -47,6 +47,20 @@ def test_python_module_entrypoint_lists_factor_catalog() -> None:
     assert payload[0]["name"] == "momentum_20"
 
 
+def test_python_module_help_supports_unicode_output() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    proc = subprocess.run(
+        [sys.executable, "-m", "factorlab", "--help"],
+        cwd=str(repo_root),
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "统一入口" in proc.stdout
+
+
 def test_cleanup_outputs_subcommand_supports_json(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     root = tmp_path / "outputs"

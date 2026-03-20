@@ -381,6 +381,32 @@ def test_run_from_config_explicit_synthetic_adapter_ignores_data_path(tmp_path) 
     assert meta["data"]["config"]["adapter"] == "synthetic"
 
 
+def test_run_from_config_supports_relative_out_dir(tmp_path, monkeypatch) -> None:
+    cfg = {
+        "run": {
+            "factor_scope": "cs",
+            "eval_axis": "cross_section",
+            "standardization": "cs_zscore",
+        },
+        "data": {
+            "adapter": "synthetic",
+            "mode": "panel",
+            "fields_required": ["date", "asset", "close", "volume", "mkt_cap", "industry"],
+            "synthetic": {"n_assets": 6, "n_days": 120, "seed": 7, "start_date": "2020-01-01"},
+        },
+        "factor": {"names": ["momentum_20"], "on_missing": "raise"},
+        "research": {"horizons": [1, 5], "quantiles": 5, "ic_rolling_window": 20},
+        "backtest": {"enabled": False},
+    }
+    monkeypatch.chdir(tmp_path)
+
+    res = run_from_config(cfg, out_dir=Path("relative_out"))
+
+    assert res.out_dir == (tmp_path / "relative_out").resolve()
+    assert res.index_html.exists()
+    assert (res.out_dir / "README_FIRST.md").exists()
+
+
 def test_run_from_config_applies_fast_research_profile_defaults(tmp_path) -> None:
     cfg = {
         "run": {

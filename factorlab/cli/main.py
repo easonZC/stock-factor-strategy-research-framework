@@ -18,6 +18,7 @@ from factorlab.cli.utils import (
     setup_logging_from_args,
 )
 from factorlab.config import AdapterConfig, UniverseFilterConfig
+from factorlab.runtime import RunContext, enable_utf8_stdio
 from factorlab.data import build_data_adapter_registry, build_data_adapter_validator_registry, write_panel
 from factorlab.factors import build_factor_registry, describe_factor_registry, factor_definitions_frame
 from factorlab.models import ModelRegistry, train_model_factor
@@ -36,6 +37,14 @@ from factorlab.workflows import (
 )
 
 LOGGER = get_logger("factorlab.cli")
+
+
+def _configure_cli_io() -> None:
+    enable_utf8_stdio()
+
+
+def _build_run_context(*, out_dir: Path) -> RunContext:
+    return RunContext.create(out_dir=out_dir, repo_root=Path.cwd())
 
 
 def _catalog_payload(items: list[Any], *, strategy: bool) -> list[dict[str, Any]]:
@@ -88,13 +97,14 @@ def _run_command(args: argparse.Namespace) -> None:
         category="factor",
         default_name=Path(args.config[-1]).stem if args.config else "factor_run",
     )
-    out_dir.mkdir(parents=True, exist_ok=True)
+    run_context = _build_run_context(out_dir=out_dir)
+    run_context.outputs.ensure_root()
     if args.show_effective_config:
         print(yaml.safe_dump(effective_cfg, sort_keys=False, allow_unicode=False))
     if args.save_effective_config:
-        (out_dir / "effective_config.yaml").write_text(
+        run_context.outputs.write_text(
+            "effective_config.yaml",
             yaml.safe_dump(effective_cfg, sort_keys=False, allow_unicode=False),
-            encoding="utf-8",
         )
     if args.validate_only:
         warnings = validate_run_config_schema(effective_cfg, strict=True)
@@ -102,14 +112,13 @@ def _run_command(args: argparse.Namespace) -> None:
             "\n%s",
             render_run_summary(
                 title="validate_only",
-                lines={"config_files": ", ".join(args.config), "warnings": len(warnings), "effective_out_dir": out_dir},
+                lines={"config_files": ", ".join(args.config), "warnings": len(warnings), "effective_out_dir": run_context.out_dir},
             ),
         )
         return
     result = run_from_config(
         config=effective_cfg,
-        out_dir=out_dir,
-        repo_root=Path.cwd(),
+        run_context=run_context,
         validate_schema=not args.skip_schema_validation,
     )
     LOGGER.info(
@@ -146,6 +155,7 @@ def _run_command(args: argparse.Namespace) -> None:
 
 
 def run_main(argv: Sequence[str] | None = None) -> None:
+    _configure_cli_io()
     parser = argparse.ArgumentParser()
     _configure_run_parser(parser)
     _run_command(parser.parse_args(argv))
@@ -217,6 +227,7 @@ def _lint_command(args: argparse.Namespace) -> None:
 
 
 def lint_main(argv: Sequence[str] | None = None) -> None:
+    _configure_cli_io()
     parser = argparse.ArgumentParser()
     _configure_lint_parser(parser)
     _lint_command(parser.parse_args(argv))
@@ -249,9 +260,12 @@ def _configure_panel_research_parser(parser: argparse.ArgumentParser) -> None:
 
 def _panel_research_command(args: argparse.Namespace) -> None:
     setup_logging_from_args(args)
+    run_context = _build_run_context(
+        out_dir=resolve_output_dir(out=args.out, run_name=args.name, category="factor", default_name="panel_research")
+    )
     result = run_panel_factor_research(
         panel_path=args.panel,
-        out_dir=resolve_output_dir(out=args.out, run_name=args.name, category="factor", default_name="panel_research"),
+        out_dir=run_context.out_dir,
         config=PanelFactorResearchConfig(
             factors=args.factors,
             horizons=list(args.horizons),
@@ -264,7 +278,7 @@ def _panel_research_command(args: argparse.Namespace) -> None:
             ic_rolling_window=int(args.ic_rolling_window),
             on_missing_factor=args.on_missing_factor,
         ),
-        repo_root=Path.cwd(),
+        run_context=run_context,
         validate_schema=True,
     )
     LOGGER.info(
@@ -282,6 +296,7 @@ def _panel_research_command(args: argparse.Namespace) -> None:
 
 
 def panel_research_main(argv: Sequence[str] | None = None) -> None:
+    _configure_cli_io()
     parser = argparse.ArgumentParser()
     _configure_panel_research_parser(parser)
     _panel_research_command(parser.parse_args(argv))
@@ -335,9 +350,12 @@ def _configure_model_benchmark_parser(parser: argparse.ArgumentParser) -> None:
 
 def _model_benchmark_command(args: argparse.Namespace) -> None:
     setup_logging_from_args(args)
+    run_context = _build_run_context(
+        out_dir=resolve_output_dir(out=args.out, run_name=args.name, category="model_factor", default_name="benchmark")
+    )
     res = run_model_factor_benchmark(
         panel_path=args.panel,
-        out_dir=resolve_output_dir(out=args.out, run_name=args.name, category="model_factor", default_name="benchmark"),
+        out_dir=run_context.out_dir,
         config=ModelFactorBenchmarkConfig(
             models=args.models,
             factor_prefix=args.factor_prefix,
@@ -381,7 +399,7 @@ def _model_benchmark_command(args: argparse.Namespace) -> None:
             save_model_artifacts=args.save_model_artifacts,
             model_artifact_dir=args.model_artifact_dir,
         ),
-        repo_root=Path.cwd(),
+        run_context=run_context,
     )
     LOGGER.info(
         "\n%s",
@@ -399,6 +417,7 @@ def _model_benchmark_command(args: argparse.Namespace) -> None:
 
 
 def model_benchmark_main(argv: Sequence[str] | None = None) -> None:
+    _configure_cli_io()
     parser = argparse.ArgumentParser()
     _configure_model_benchmark_parser(parser)
     _model_benchmark_command(parser.parse_args(argv))
@@ -458,6 +477,7 @@ def _prepare_data_command(args: argparse.Namespace) -> None:
 
 
 def prepare_data_main(argv: Sequence[str] | None = None) -> None:
+    _configure_cli_io()
     parser = argparse.ArgumentParser()
     _configure_prepare_data_parser(parser)
     _prepare_data_command(parser.parse_args(argv))
@@ -530,6 +550,7 @@ def _cleanup_command(args: argparse.Namespace) -> None:
 
 
 def cleanup_outputs_main(argv: Sequence[str] | None = None) -> None:
+    _configure_cli_io()
     parser = argparse.ArgumentParser()
     _configure_cleanup_parser(parser)
     _cleanup_command(parser.parse_args(argv))
@@ -550,6 +571,7 @@ def _train_model_factor_command(args: argparse.Namespace) -> None:
 
 
 def train_model_factor_main(argv: Sequence[str] | None = None) -> None:
+    _configure_cli_io()
     parser = argparse.ArgumentParser()
     _configure_train_model_factor_parser(parser)
     _train_model_factor_command(parser.parse_args(argv))
@@ -579,6 +601,7 @@ def _factor_catalog_command(args: argparse.Namespace) -> None:
 
 
 def list_factors_main(argv: Sequence[str] | None = None) -> None:
+    _configure_cli_io()
     parser = argparse.ArgumentParser()
     _configure_catalog_parser(parser, strategy=False)
     _factor_catalog_command(parser.parse_args(argv))
@@ -603,6 +626,7 @@ def _strategy_catalog_command(args: argparse.Namespace) -> None:
 
 
 def list_strategies_main(argv: Sequence[str] | None = None) -> None:
+    _configure_cli_io()
     parser = argparse.ArgumentParser()
     _configure_catalog_parser(parser, strategy=True)
     _strategy_catalog_command(parser.parse_args(argv))
@@ -639,6 +663,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    _configure_cli_io()
     parser = build_parser()
     args = parser.parse_args(argv)
     args.handler(args)

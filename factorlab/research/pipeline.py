@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from factorlab.config import ResearchConfig
+from factorlab.runtime import OutputContext, coerce_output_context
 from factorlab.plotting import (
     plot_corr_heatmap,
     plot_coverage,
@@ -73,9 +74,11 @@ class FactorResearchPipeline:
         panel: pd.DataFrame,
         factors: list[str],
         out_dir: str | Path,
+        output_context: OutputContext | None = None,
         overview_files: dict[str, Path] | None = None,
     ) -> dict[str, Path]:
-        out = Path(out_dir)
+        resolved_output = output_context or coerce_output_context(out_dir)
+        out = resolved_output.root
         assets_dir = out / "assets"
         tables_dir = out / "tables"
         detail_assets_dir = assets_dir / "detail"
@@ -593,11 +596,11 @@ class FactorResearchPipeline:
                 },
                 indent=2,
             ),
-            encoding="utf-8",
+            encoding=resolved_output.encoding,
         )
 
         index_html = render_report(
-            out,
+            resolved_output,
             summary=summary,
             figure_map=figure_map,
             table_map=table_map,

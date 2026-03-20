@@ -5,9 +5,20 @@ This repository is meant to feel like a serious research stack, not a collection
 ## Setup
 
 ```bash
-python3 -m pip install -r requirements.txt
-python3 -m pip install -e .
+python3 scripts/bootstrap.sh
+# or on Windows PowerShell:
+pwsh scripts/bootstrap.ps1
 ```
+
+Manual fallback:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -e .
+```
+
+Treat `.venv/` as machine-local state only.
 
 After setup, use the installed CLI:
 

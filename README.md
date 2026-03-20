@@ -36,9 +36,19 @@ tests/                # Test suite
 
 ### 3. Installation
 ```bash
-python3 -m pip install -r requirements.txt
-python3 -m pip install -e .
+python3 scripts/bootstrap.sh
+# or on Windows PowerShell:
+pwsh scripts/bootstrap.ps1
 ```
+
+If you prefer manual setup:
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -e .
+```
+
+`.venv/` is local runtime state and should not be shared or committed across machines.
 
 ### 4. Main Entrypoints
 - `factorlab run`: unified config-driven entrypoint

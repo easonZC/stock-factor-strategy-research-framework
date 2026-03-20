@@ -15,10 +15,10 @@ from factorlab.config import NeutralizationConfig, ResearchConfig, UniverseFilte
 from factorlab.data import PanelSanitizationConfig, apply_universe_filter, read_panel
 from factorlab.factors import apply_factors, default_factor_registry
 from factorlab.models import ModelRegistry, OOFSplitConfig, train_oof_model_factor
+from factorlab.runtime import OutputContext, RunContext, coerce_output_context, coerce_run_context
 from factorlab.research import FactorResearchPipeline
 from factorlab.utils import get_logger, summarize_captured_warnings, timed_stage
 from factorlab.workflows.plugin_preflight import preflight_requested_components
-from factorlab.workflows.runtime import collect_runtime_manifest
 
 LOGGER = get_logger("factorlab.workflows.model_factor_benchmark")
 
@@ -169,12 +169,12 @@ def _to_jsonable(value: Any) -> Any:
     return value
 
 
-def _write_json(path: str | Path, payload: dict[str, Any]) -> Path:
+def _write_json(path: str | Path, payload: dict[str, Any], *, encoding: str = "utf-8") -> Path:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(
         json.dumps(_to_jsonable(payload), indent=2, ensure_ascii=False),
-        encoding="utf-8",
+        encoding=encoding,
     )
     return p
 
@@ -656,10 +656,12 @@ class BenchmarkReportStage:
         resolved: BenchmarkResolvedConfig,
         out_dir: Path,
         timings: dict[str, float],
+        output_context: OutputContext | None = None,
     ):
         self.config = config
         self.resolved = resolved
         self.out_dir = out_dir
+        self.output_context = output_context or coerce_output_context(out_dir)
         self.timings = timings
 
     def run(
@@ -682,7 +684,8 @@ class BenchmarkReportStage:
                 report_outputs = FactorResearchPipeline(research_cfg).run(
                     panel=panel,
                     factors=report_factors,
-                    out_dir=self.out_dir,
+                    out_dir=self.output_context.root,
+                    output_context=self.output_context,
                 )
 
         summary = pd.read_csv(report_outputs["summary_csv"])
@@ -715,12 +718,13 @@ class BenchmarkReportStage:
 
 def run_model_factor_benchmark(
     panel_path: str | Path,
-    out_dir: str | Path,
+    out_dir: str | Path | None,
     config: ModelFactorBenchmarkConfig,
     repo_root: str | Path | None = None,
+    run_context: RunContext | None = None,
 ) -> ModelFactorBenchmarkResult:
-    out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
+    context = coerce_run_context(run_context=run_context, out_dir=out_dir, repo_root=repo_root)
+    out = context.outputs.ensure_root()
     timings: dict[str, float] = {}
     captured_warnings: list[Any] = []
 
@@ -729,7 +733,13 @@ def run_model_factor_benchmark(
     oof_stage = OOFTrainingStage(config=config, resolved=resolved, out_dir=out, timings=timings).run(
         panel=panel_stage.panel
     )
-    report_stage = BenchmarkReportStage(config=config, resolved=resolved, out_dir=out, timings=timings).run(
+    report_stage = BenchmarkReportStage(
+        config=config,
+        resolved=resolved,
+        out_dir=out,
+        timings=timings,
+        output_context=context.outputs,
+    ).run(
         panel=oof_stage.panel,
         model_rows=oof_stage.model_rows,
         factor_cols=oof_stage.factor_cols,
@@ -769,11 +779,13 @@ def run_model_factor_benchmark(
         "outputs": dict(report_stage.outputs),
         "comparison_csv": str(report_stage.comparison_csv),
     }
-    run_meta_path = _write_json(out / "run_meta.json", run_meta)
-    run_manifest_path = _write_json(
-        out / "run_manifest.json",
-        collect_runtime_manifest(repo_root=repo_root),
-    )
+    run_meta["runtime"] = {
+        "repo_root": str(context.repo_root),
+        "out_dir": str(context.out_dir),
+        "encoding": context.text_encoding,
+    }
+    run_meta_path = _write_json(out / "run_meta.json", run_meta, encoding=context.text_encoding)
+    run_manifest_path = _write_json(out / "run_manifest.json", context.runtime_manifest, encoding=context.text_encoding)
 
     index_html = Path(report_stage.outputs["index_html"])
     summary_csv = Path(report_stage.outputs["summary_csv"])

@@ -18,6 +18,21 @@
 7. 可选回测
 8. 报告与审计产物输出
 
+### 2.1 运行上下文边界
+- `RunContext` 统一承载 `repo_root`、`runtime_manifest`、文本编码与默认输出根目录
+- `OutputContext` 统一承载当前 run 的输出目录解析、目录创建与文本写入编码
+- CLI、workflow、research、reporting 不再各自维护一套 `out_dir` 约定，统一通过上下文传递
+- `run_meta.json` 与 `run_manifest.json` 显式记录 `repo_root`、`out_dir`、`encoding`，便于回放与审计
+
+### 2.2 Workflow orchestration 拆分
+- `factorlab/workflows/config_runner.py` 只保留编排职责：阶段串联、治理策略、运行元数据落盘
+- `factorlab/workflows/config_compose.py` 负责配置继承、override、别名归一和 schema 校验
+- `factorlab/workflows/data_stage.py` 负责 adapter 配置、数据加载、形状治理与质量审计
+- `factorlab/workflows/factor_stage.py` 负责因子候选预检、字段校验、因子计算与自定义变换
+- `factorlab/workflows/research_stage.py` 负责 CS/TS 研究管线装配
+- `factorlab/workflows/backtest_stage.py` 负责策略定义解析与可选回测
+- `factorlab/workflows/reporting_stage.py` 负责 stage-only 输出和轻量落盘逻辑
+
 ## 3. 配置与数据策略
 ### 3.1 因子配置
 - 显式指定：`factor.names: [factor_a, factor_b]`

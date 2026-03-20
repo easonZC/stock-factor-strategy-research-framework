@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from factorlab.runtime import RunContext
+
 from .config_runner import ConfigRunResult, run_from_config
 
 
@@ -124,6 +126,7 @@ def run_panel_factor_research(
     config: PanelFactorResearchConfig,
     repo_root: str | Path | None = None,
     validate_schema: bool = True,
+    run_context: RunContext | None = None,
 ) -> ConfigRunResult:
     """以面板文件为输入运行因子研究。"""
     workflow_cfg = build_panel_factor_research_run_config(panel_path=panel_path, config=config)
@@ -132,5 +135,5 @@ def run_panel_factor_research(
         out_dir=out_dir,
         repo_root=repo_root,
         validate_schema=validate_schema,
+        run_context=run_context,
     )
-

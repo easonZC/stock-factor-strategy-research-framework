@@ -9,6 +9,7 @@ from typing import Any
 
 import pandas as pd
 
+from factorlab.runtime import OutputContext, coerce_output_context
 from factorlab.reporting.catalog import FigureAttribution
 from factorlab.reporting.overview import ReportOverviewBuilder
 from factorlab.utils import ensure_within
@@ -23,8 +24,9 @@ _OVERVIEW_LINKS = (
 class ReportRenderer:
     """研究报告渲染器（OOP 接口）。"""
 
-    def __init__(self, out_dir: Path):
-        self.out_dir = out_dir
+    def __init__(self, out_dir: OutputContext | Path):
+        self.output_context = coerce_output_context(out_dir)
+        self.out_dir = self.output_context.root
 
     def _safe_rel(self, path: Path) -> str:
         safe_path = ensure_within(self.out_dir, path)
@@ -311,12 +313,12 @@ class ReportRenderer:
             ]
         )
         out = self.out_dir / "index.html"
-        out.write_text(html_text, encoding="utf-8")
+        out.write_text(html_text, encoding=self.output_context.encoding)
         return out
 
 
 def render_report(
-    out_dir: Path,
+    out_dir: OutputContext | Path,
     summary: pd.DataFrame,
     figure_map: dict[str, list[Path]],
     table_map: dict[str, list[Path]],

@@ -59,9 +59,9 @@ def resolve_output_dir(
     default_name: str,
 ) -> Path:
     if out:
-        return Path(out)
+        return Path(out).expanduser().resolve()
     base = Path("outputs") / "research" / _slug(category, "misc")
-    return base / f"{_slug(run_name or default_name, 'run')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    return (base / f"{_slug(run_name or default_name, 'run')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}").resolve()
 
 
 def render_run_summary(title: str, lines: dict[str, Any]) -> str:

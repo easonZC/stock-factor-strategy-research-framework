@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from factorlab.runtime import OutputContext, coerce_output_context
 from factorlab.reporting.catalog import (
     FigureAttribution,
     normalize_figure_attributions,
@@ -50,8 +51,9 @@ class ReportOverviewArtifacts:
 class ReportOverviewBuilder:
     """构建去冗余、可审计的报告总览层。"""
 
-    def __init__(self, out_dir: Path):
-        self.out_dir = out_dir
+    def __init__(self, out_dir: OutputContext | Path):
+        self.output_context = coerce_output_context(out_dir)
+        self.out_dir = self.output_context.root
 
     def _guided_overview_refs(self, overview_files: dict[str, Path]) -> list[tuple[str, str]]:
         refs: list[tuple[str, str]] = []
@@ -191,7 +193,7 @@ class ReportOverviewBuilder:
         lines.append("完整明细仍在 `assets/detail/` 与 `tables/detail/`。")
 
         out = self.out_dir / "README_FIRST.md"
-        out.write_text("\n".join(lines), encoding="utf-8")
+        out.write_text("\n".join(lines), encoding=self.output_context.encoding)
         return out
 
     def _write_navigation_json(
@@ -219,7 +221,7 @@ class ReportOverviewBuilder:
             "full_tables_root": "tables/detail",
         }
         out = self.out_dir / "report_navigation.json"
-        out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding=self.output_context.encoding)
         return out
 
     def _write_overview_bundle(
@@ -269,7 +271,7 @@ class ReportOverviewBuilder:
         )
 
         readme_path = overview_dir / "README.md"
-        readme_path.write_text("\n".join(readme_lines), encoding="utf-8")
+        readme_path.write_text("\n".join(readme_lines), encoding=self.output_context.encoding)
 
         manifest = {
             "layout_version": 2,
@@ -284,7 +286,7 @@ class ReportOverviewBuilder:
             "artifact_catalog": artifact_catalog_path.relative_to(self.out_dir).as_posix(),
         }
         manifest_path = overview_dir / "manifest.json"
-        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding=self.output_context.encoding)
         return overview_dir
 
     def build(
